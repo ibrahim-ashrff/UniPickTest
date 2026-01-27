@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users collection - users can read/write their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Orders collection - authenticated users can create and read their own orders
+    match /orders/{orderId} {
+      // Allow authenticated users to create orders (when userId matches)
+      allow create: if request.auth != null 
+                    && request.resource.data.userId == request.auth.uid;
+      
+      // Allow users to read their own orders
+      allow read: if request.auth != null 
+                 && resource.data.userId == request.auth.uid;
+      
+      // Allow users to update their own orders (for status changes)
+      allow update: if request.auth != null 
+                   && resource.data.userId == request.auth.uid;
+      
+      // Allow users to delete their own orders (optional)
+      allow delete: if request.auth != null 
+                   && resource.data.userId == request.auth.uid;
+    }
+  }
+}
+
+
+
+

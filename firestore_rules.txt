@@ -1,0 +1,71 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to get user data
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    // Helper function to check if user is a truck owner
+    function isTruckOwner() {
+      let userData = getUserData();
+      return userData != null && userData.role == 'truck owner' && userData.ownerId != null;
+    }
+    
+    // Helper function to get truck owner's ownerId
+    function getTruckOwnerId() {
+      return getUserData().ownerId;
+    }
+
+    // Users collection - users can read/write their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Orders collection
+    match /orders/{orderId} {
+      
+      // Allow create: user must be authenticated and userId must match
+      allow create: if request.auth != null 
+                    && request.resource.data.userId == request.auth.uid;
+      
+      // Allow read: 
+      // 1. If user is the order owner (userId matches)
+      // 2. OR if user is a truck owner and truckId matches their ownerId
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        (isTruckOwner() && resource.data.truckId == getTruckOwnerId())
+      );
+      
+      // Allow update:
+      // 1. If user is the order owner (userId matches) - can update their own orders
+      // 2. OR if user is a truck owner and truckId matches their ownerId - can update order status
+      allow update: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        (isTruckOwner() && resource.data.truckId == getTruckOwnerId())
+      );
+      
+      // Allow delete: only the order owner can delete
+      allow delete: if request.auth != null 
+                    && resource.data.userId == request.auth.uid;
+    }
+    
+    // Food trucks collection (if you need to store trucks in Firestore later)
+    match /food_trucks/{truckId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isTruckOwner() && truckId == getTruckOwnerId();
+    }
+    
+    // Menu items subcollection (for truck owners to manage their menu)
+    match /food_trucks/{truckId}/menu_items/{itemId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isTruckOwner() && truckId == getTruckOwnerId();
+    }
+  }
+}
+
+
+
+

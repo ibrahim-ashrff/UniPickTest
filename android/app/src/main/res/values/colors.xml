@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fawry SDK UI Colors - Set to burgundy theme -->
+    <color name="fawry_blue">#7A1E2C</color>
+    <!-- Set your primary color hex code (burgundy) -->
+    <color name="fawry_yellow">#7A1E2C</color>
+    <!-- Set your secondary color hex code (burgundy) -->
+</resources>
+
+
+
