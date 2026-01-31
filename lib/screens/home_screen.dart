@@ -146,7 +146,7 @@ class HomeScreen extends StatelessWidget {
                               crossAxisCount: 2,
                               crossAxisSpacing: 18,
                               mainAxisSpacing: 18,
-                              childAspectRatio: 0.78,
+                              childAspectRatio: 0.75,
                             ),
                             itemCount: featuredTrucks.length,
                             itemBuilder: (context, index) {
@@ -229,40 +229,44 @@ class _FoodTruckCard extends StatelessWidget {
             Expanded(
               flex: 2,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Name
-                    Text(
-                      truck.name,
-                      style: GoogleFonts.inter(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.black87,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
-                    // Cuisine type
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.burgundy.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
+                    Flexible(
                       child: Text(
-                        truck.cuisine,
+                        truck.name,
                         style: GoogleFonts.inter(
-                          fontSize: 11,
-                          color: AppColors.burgundy,
-                          fontWeight: FontWeight.w400,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.black87,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    // Cuisine type
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.burgundy.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          truck.cuisine,
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            color: AppColors.burgundy,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
                   ],

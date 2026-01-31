@@ -25,6 +25,8 @@ class CartItemTile extends StatelessWidget {
             fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
         subtitle: Text(
           'EGP ${cartItem.menuItem.price.toStringAsFixed(0)} each',
@@ -32,6 +34,8 @@ class CartItemTile extends StatelessWidget {
             fontSize: 14,
             color: Colors.grey[600],
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,

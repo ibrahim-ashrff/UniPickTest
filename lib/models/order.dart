@@ -14,6 +14,7 @@ class Order {
   final String? invoiceNumber;
   final String? businessRefNumber;
   final String? truckId; // ID of the food truck this order is for
+  final int? displayOrderNumber; // Sequential order number per truck (e.g., 1, 2, 3...)
 
   Order({
     required this.id,
@@ -29,6 +30,7 @@ class Order {
     this.invoiceNumber,
     this.businessRefNumber,
     this.truckId,
+    this.displayOrderNumber,
   });
 
   Map<String, dynamic> toJson() {
@@ -77,6 +79,7 @@ class Order {
       'invoiceNumber': invoiceNumber,
       'businessRefNumber': businessRefNumber,
       'truckId': truckId,
+      'displayOrderNumber': displayOrderNumber,
       // Note: createdAt will be added as Timestamp in orders_provider
     };
   }
@@ -97,6 +100,7 @@ class Order {
       invoiceNumber: json['invoiceNumber'],
       businessRefNumber: json['businessRefNumber'],
       truckId: json['truckId'],
+      displayOrderNumber: json['displayOrderNumber'] as int?,
     );
   }
 }

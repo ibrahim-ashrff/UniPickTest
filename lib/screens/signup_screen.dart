@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
 import '../utils/page_transitions.dart';
+import '../ui/web_responsive_scaffold.dart';
 import 'main_navigation.dart';
 
 /// Signup screen for creating a new account
@@ -120,8 +121,9 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.burgundy,
+    return WebResponsiveScaffold(
+      child: Scaffold(
+        backgroundColor: AppColors.burgundy,
       appBar: AppBar(
         title: const Text('Create Account'),
         backgroundColor: AppColors.burgundy,
@@ -331,6 +333,7 @@ class _SignupScreenState extends State<SignupScreen> {
             ),
           ),
         ),
+      ),
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../state/cart_provider.dart';
 import '../widgets/cart_item_tile.dart';
 import '../utils/page_transitions.dart';
+import '../utils/app_colors.dart';
 import 'checkout_screen.dart';
 
 class CartScreen extends StatelessWidget {
@@ -110,7 +111,7 @@ class CartScreen extends StatelessWidget {
                             );
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
+                            backgroundColor: AppColors.burgundy,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),

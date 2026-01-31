@@ -29,6 +29,7 @@ class MyApp extends StatelessWidget {
       builder: (context, themeProvider, child) {
         return MaterialApp(
           title: 'UNIPICK',
+          debugShowCheckedModeBanner: false,
           theme: ThemeData(
             primaryColor: AppColors.burgundy,
             scaffoldBackgroundColor: AppColors.background,

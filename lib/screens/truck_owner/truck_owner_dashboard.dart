@@ -7,6 +7,7 @@ import '../../data/mock_food_trucks.dart';
 import 'truck_owner_orders_screen.dart';
 import 'truck_owner_menu_screen.dart';
 import 'truck_owner_profile_screen.dart';
+import 'truck_owner_dashboard_screen.dart';
 
 /// Truck Owner Dashboard
 /// Main navigation for truck owners to manage their food truck
@@ -89,6 +90,7 @@ class _TruckOwnerDashboardState extends State<TruckOwnerDashboard> {
     }
 
     final List<Widget> _screens = [
+      TruckOwnerDashboardScreen(truckId: _truckId),
       TruckOwnerOrdersScreen(truckId: _truckId),
       TruckOwnerMenuScreen(truckId: _truckId),
       TruckOwnerProfileScreen(truckId: _truckId, truckName: _truckName),
@@ -130,6 +132,10 @@ class _TruckOwnerDashboardState extends State<TruckOwnerDashboard> {
           unselectedFontSize: 12,
           elevation: 0,
           items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.dashboard),
+              label: 'Dashboard',
+            ),
             BottomNavigationBarItem(
               icon: Icon(Icons.receipt_long),
               label: 'Orders',

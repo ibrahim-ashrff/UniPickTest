@@ -138,7 +138,85 @@ class OrdersProvider extends ChangeNotifier {
     }
   }
 
-  // Load orders from Firestore
+  // Get real-time stream of orders for the current user
+  Stream<List<app_models.Order>> getOrdersStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return Stream.value([]);
+    }
+
+    return FirebaseFirestore.instance
+        .collection('orders')
+        .where('userId', isEqualTo: user.uid)
+        .snapshots()
+        .map((snapshot) {
+      final List<app_models.Order> orders = [];
+      
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data();
+          
+          // Reconstruct CartItems from stored data
+          List<CartItem> cartItems = [];
+          if (data['items'] != null && data['items'] is List) {
+            for (var itemData in data['items']) {
+              if (itemData is Map) {
+                try {
+                  final menuItem = MenuItem(
+                    id: itemData['menuItemId'] ?? '',
+                    name: itemData['menuItemName'] ?? 'Unknown Item',
+                    description: itemData['menuItemDescription'] ?? '',
+                    price: (itemData['price'] ?? 0).toDouble(),
+                  );
+                  final cartItem = CartItem(
+                    menuItem: menuItem,
+                    quantity: itemData['quantity'] ?? 1,
+                  );
+                  cartItems.add(cartItem);
+                } catch (e) {
+                  debugPrint("   ⚠️ Error reconstructing cart item: $e");
+                }
+              }
+            }
+          }
+          
+          final createdAt = (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+          
+          final order = app_models.Order(
+            id: doc.id,
+            fawryReferenceNumber: data['fawryReferenceNumber'] ?? '',
+            merchantRefNumber: data['merchantRefNumber'] ?? '',
+            items: cartItems,
+            total: (data['total'] ?? 0).toDouble(),
+            subtotal: (data['subtotal'] ?? 0).toDouble(),
+            fawryFees: data['fawryFees']?.toDouble(),
+            createdAt: createdAt,
+            status: data['status'] ?? 'pending',
+            notes: data['notes'],
+            invoiceNumber: data['invoiceNumber'],
+            businessRefNumber: data['businessRefNumber'],
+            truckId: data['truckId'],
+            displayOrderNumber: data['displayOrderNumber'] as int?,
+          );
+          orders.add(order);
+        } catch (e) {
+          debugPrint("   ❌ Error processing order ${doc.id}: $e");
+        }
+      }
+      
+      // Sort by createdAt (descending - newest first)
+      orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
+      // Update local state
+      _orders.clear();
+      _orders.addAll(orders);
+      notifyListeners();
+      
+      return orders;
+    });
+  }
+
+  // Load orders from Firestore (one-time fetch, kept for backward compatibility)
   Future<void> loadOrders() async {
     _isLoading = true;
     notifyListeners();
@@ -210,6 +288,7 @@ class OrdersProvider extends ChangeNotifier {
             invoiceNumber: data['invoiceNumber'],
             businessRefNumber: data['businessRefNumber'],
             truckId: data['truckId'],
+            displayOrderNumber: data['displayOrderNumber'] as int?,
           );
           loadedOrders.add(order);
           debugPrint("   ✅ Loaded order: ${doc.id} (${cartItems.length} items, ${order.total} EGP)");
@@ -267,6 +346,8 @@ class OrdersProvider extends ChangeNotifier {
         notes: oldOrder.notes,
         invoiceNumber: oldOrder.invoiceNumber,
         businessRefNumber: oldOrder.businessRefNumber,
+        truckId: oldOrder.truckId,
+        displayOrderNumber: oldOrder.displayOrderNumber,
       );
       _orders[index] = updatedOrder;
       notifyListeners();

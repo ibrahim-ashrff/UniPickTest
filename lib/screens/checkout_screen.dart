@@ -391,13 +391,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              '${item.quantity}x ${item.menuItem.name}',
-                              style: const TextStyle(fontSize: 14),
+                            Expanded(
+                              child: Text(
+                                '${item.quantity}x ${item.menuItem.name}',
+                                style: const TextStyle(fontSize: 14),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                             Text(
                               'EGP ${item.total.toStringAsFixed(0)}',
                               style: const TextStyle(fontSize: 14),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),

@@ -1,11 +1,11 @@
 {
-    "name": "test_app2",
-    "short_name": "test_app2",
+    "name": "UNIPICK",
+    "short_name": "UNIPICK",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#7A1E2C",
+    "theme_color": "#7A1E2C",
+    "description": "UniPick - Skip the line. Pick up smart.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

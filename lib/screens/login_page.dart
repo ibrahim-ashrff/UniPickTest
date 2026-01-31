@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
@@ -44,55 +45,55 @@ class LoginPage extends StatelessWidget {
           SafeArea(
             child: Column(
               children: [
-                const SizedBox(height: 80),
+                const SizedBox(height: 20),
                 // Logo, sectioner, app name, and motto
                 Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Column(
                     children: [
-                      // Logo - increased size
+                      // Logo - further reduced size to fit
                       Image.asset(
                         'LOGOUNI-removebg-preview.png',
-                        height: 200,
+                        height: 120,
                         fit: BoxFit.contain,
                         errorBuilder: (context, error, stackTrace) {
                           return const Text(
                             'LOGOUNI',
                             style: TextStyle(
-                              fontSize: 67,
+                              fontSize: 40,
                               fontWeight: FontWeight.bold,
                               color: AppColors.burgundy,
                             ),
                           );
                         },
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
                       // Sectioner (single line)
                       Container(
-                        width: 60,
+                        width: 50,
                         height: 2,
                         decoration: BoxDecoration(
                           color: AppColors.textPrimary,
                           borderRadius: BorderRadius.circular(1),
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
                       // App Name
                       Text(
                         'UniPick',
                         style: GoogleFonts.inter(
-                          fontSize: 28,
+                          fontSize: 22,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.5,
                           color: AppColors.textPrimary,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
                       // Motto/Tagline
                       Text(
                         'Skip the line. Pick up smart.',
                         style: GoogleFonts.inter(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w400,
                           color: Colors.black54,
                         ),
@@ -101,62 +102,53 @@ class LoginPage extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-
                 // Buttons area (sits on wave) - shifted upwards
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 30), // Added top padding to shift up
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                   child: Column(
                     children: [
-                      Text(
-                        'Select your preferred sign-in method',
-                        style: GoogleFonts.inter(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white.withOpacity(0.9),
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      _AuthButton(
-                        text: 'Continue with Google',
-                        onPressed: () async {
-                          try {
-                            final authService = AuthService();
-                            final userCredential = await authService.signInWithGoogle();
-                            
-                            if (userCredential != null && context.mounted) {
-                              // Navigate to main navigation after successful sign-in
-                              context.slideReplacementAll(
-                                const MainNavigation(),
-                                direction: SlideDirection.left,
-                              );
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              String errorMessage = 'Error signing in';
-                              if (e.toString().contains('network_error') || 
-                                  e.toString().contains('ApiException: 7')) {
-                                errorMessage = 'Network error. Please check your internet connection and try again.';
-                              } else if (e.toString().contains('sign_in_canceled')) {
-                                errorMessage = 'Sign in was canceled';
-                              } else {
-                                errorMessage = 'Error: ${e.toString()}';
-                              }
-                              
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(errorMessage),
-                                  backgroundColor: Colors.red,
-                                  duration: const Duration(seconds: 4),
-                                ),
-                              );
-                            }
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 12),
+                      // Only show Google login on mobile (Android/iOS), not on web
+                      if (!kIsWeb)
                         _AuthButton(
-                        text: 'Continue with email & password',
+                          text: 'Continue with Google',
+                          onPressed: () async {
+                            try {
+                              final authService = AuthService();
+                              final userCredential = await authService.signInWithGoogle();
+                              
+                              if (userCredential != null && context.mounted) {
+                                // Navigate to main navigation after successful sign-in
+                                context.slideReplacementAll(
+                                  const MainNavigation(),
+                                  direction: SlideDirection.left,
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                String errorMessage = 'Error signing in';
+                                if (e.toString().contains('network_error') || 
+                                    e.toString().contains('ApiException: 7')) {
+                                  errorMessage = 'Network error. Please check your internet connection and try again.';
+                                } else if (e.toString().contains('sign_in_canceled')) {
+                                  errorMessage = 'Sign in was canceled';
+                                } else {
+                                  errorMessage = 'Error: ${e.toString()}';
+                                }
+                                
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(errorMessage),
+                                    backgroundColor: Colors.red,
+                                    duration: const Duration(seconds: 4),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      if (!kIsWeb) const SizedBox(height: 10),
+                      _AuthButton(
+                        text: 'Log in to your owner account',
                         onPressed: () {
                           context.slideTo(
                             const EmailPasswordLoginScreen(),

@@ -42,32 +42,40 @@ class AccountScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   children: [
-                    // Profile icon
+                    // Profile icon with initials
                     CircleAvatar(
-                      radius: 40,
-                      backgroundColor: AppColors.burgundy.withOpacity(0.1),
-                      child: Icon(
-                        Icons.person,
-                        size: 40,
-                        color: AppColors.burgundy,
+                      radius: 100,
+                      backgroundColor: AppColors.burgundy,
+                      child: Text(
+                        _getInitials(user?.displayName ?? user?.email ?? 'U'),
+                        style: GoogleFonts.inter(
+                          fontSize: 80,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // User email
+                    // User name (on top, bold)
                     Text(
-                      user?.email ?? 'Guest',
+                      user?.displayName ?? 'User',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
+                    // User email (below, grey)
                     Text(
-                      user?.displayName ?? 'User',
+                      user?.email ?? 'Guest',
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey[600],
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -167,6 +175,35 @@ class AccountScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Get initials from name (first letter of first name and first letter of last name)
+  String _getInitials(String name) {
+    if (name.isEmpty) return 'U';
+    
+    // Split by space to get first and last name
+    final parts = name.trim().split(' ');
+    
+    if (parts.length >= 2) {
+      // First letter of first name + first letter of last name
+      final firstInitial = parts[0].isNotEmpty ? parts[0][0].toUpperCase() : '';
+      final lastInitial = parts[1].isNotEmpty ? parts[1][0].toUpperCase() : '';
+      return '$firstInitial$lastInitial';
+    } else if (parts.length == 1 && parts[0].isNotEmpty) {
+      // Only one name, use first two letters or just first letter
+      final namePart = parts[0];
+      if (namePart.length >= 2) {
+        return namePart.substring(0, 2).toUpperCase();
+      }
+      return namePart[0].toUpperCase();
+    }
+    
+    // Fallback: use first letter of email if it's an email
+    if (name.contains('@')) {
+      return name[0].toUpperCase();
+    }
+    
+    return name[0].toUpperCase();
   }
 }
 

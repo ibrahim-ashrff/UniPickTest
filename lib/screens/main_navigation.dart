@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import 'home_screen.dart';
 import 'orders_screen.dart';
+import 'cart_screen.dart';
 import 'account_screen.dart';
 import 'truck_owner/truck_owner_dashboard.dart';
 import '../utils/app_colors.dart';
+import '../state/cart_provider.dart';
 
 /// Main navigation shell with bottom navigation bar
 /// Manages navigation between Home, Food Trucks, Orders, and Account screens
@@ -84,6 +87,7 @@ class _MainNavigationState extends State<MainNavigation> {
     final List<Widget> _screens = [
       const HomeScreen(),
       const OrdersScreen(),
+      const CartScreen(),
       const AccountScreen(),
     ];
 
@@ -117,16 +121,54 @@ class _MainNavigationState extends State<MainNavigation> {
           selectedFontSize: 12,
           unselectedFontSize: 12,
           elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
+          items: [
+            const BottomNavigationBarItem(
               icon: Icon(Icons.home),
               label: 'Home',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.receipt_long),
               label: 'Orders',
             ),
             BottomNavigationBarItem(
+              icon: Consumer<CartProvider>(
+                builder: (context, cart, child) {
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.shopping_cart),
+                      if (cart.itemCount > 0)
+                        Positioned(
+                          right: -8,
+                          top: -8,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: AppColors.burgundy,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Text(
+                              '${cart.itemCount}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              label: 'Cart',
+            ),
+            const BottomNavigationBarItem(
               icon: Icon(Icons.person),
               label: 'Account',
             ),

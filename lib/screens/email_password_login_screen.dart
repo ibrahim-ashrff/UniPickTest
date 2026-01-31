@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -74,7 +75,7 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.burgundy,
-      appBar: AppBar(
+        appBar: AppBar(
         title: const Text('Email & Password'),
         backgroundColor: AppColors.burgundy,
         foregroundColor: Colors.white,
@@ -82,41 +83,40 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
       body: Container(
         color: AppColors.burgundy,
         child: SafeArea(
-          child: SingleChildScrollView(
+          child: Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 40),
+                const SizedBox(height: 20),
                 // Image at the top
                 Image.asset(
                   'image-removebg-preview.png',
-                  height: 85,
+                  height: 70,
                   fit: BoxFit.contain,
                   errorBuilder: (context, error, stackTrace) {
                     return const SizedBox.shrink();
                   },
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 24),
                 // Welcome text
                 Text(
                   'Welcome Back',
                   style: GoogleFonts.inter(
-                    fontSize: 28,
+                    fontSize: 24,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   'Sign in to continue',
                   style: GoogleFonts.inter(
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: FontWeight.w400,
                     color: Colors.white.withOpacity(0.8),
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
                 TextField(
                   controller: emailController,
                   keyboardType: TextInputType.emailAddress,
@@ -137,6 +137,7 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(color: AppColors.burgundy, width: 2),
                     ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   ),
                   style: const TextStyle(color: AppColors.textPrimary),
                   onChanged: (_) {
@@ -145,7 +146,7 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                     }
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 TextField(
                   controller: passwordController,
                   obscureText: true,
@@ -166,6 +167,7 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(color: AppColors.burgundy, width: 2),
                     ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   ),
                   style: const TextStyle(color: AppColors.textPrimary),
                   onChanged: (_) {
@@ -176,8 +178,8 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                 ),
                 if (loginError != null)
                   Container(
-                    margin: const EdgeInsets.only(top: 12.0),
-                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(top: 10.0),
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: Colors.red.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(8),
@@ -185,24 +187,24 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                        const Icon(Icons.error_outline, color: Colors.white, size: 18),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             loginError!,
                             style: GoogleFonts.inter(
                               color: Colors.white,
-                              fontSize: 14,
+                              fontSize: 13,
                             ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                const SizedBox(height: 32),
+                const Spacer(),
                 SizedBox(
                   width: double.infinity,
-                  height: 52,
+                  height: 48,
                   child: ElevatedButton(
                     onPressed: loading ? null : _login,
                     style: ElevatedButton.styleFrom(
@@ -216,50 +218,53 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                     child: Text(
                       loading ? "Loading..." : "Login",
                       style: GoogleFonts.inter(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Don't have an account? ",
-                      style: GoogleFonts.inter(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 14,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: loading
-                          ? null
-                          : () {
-                              context.slideTo(
-                                const SignupScreen(),
-                                direction: SlideDirection.right,
-                              );
-                            },
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: Text(
-                        "Sign up",
+                // Only show sign up option on mobile, not on web
+                if (!kIsWeb) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Don't have an account? ",
                         style: GoogleFonts.inter(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.underline,
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 13,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 40),
+                      TextButton(
+                        onPressed: loading
+                            ? null
+                            : () {
+                                context.slideTo(
+                                  const SignupScreen(),
+                                  direction: SlideDirection.right,
+                                );
+                              },
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          "Sign up",
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 20),
               ],
             ),
           ),

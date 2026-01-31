@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/order.dart';
 import '../utils/app_colors.dart';
+import '../data/mock_food_trucks.dart';
 
 /// Screen that displays order receipt with all details
 class ReceiptScreen extends StatelessWidget {
@@ -36,25 +37,17 @@ class ReceiptScreen extends StatelessWidget {
             children: [
               // Header
               Card(
-                color: Colors.red[50],
+                color: Colors.white,
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Column(
                     children: [
-                      const Text(
-                        'UNIPICK',
-                        style: TextStyle(
+                      Text(
+                        _getTruckName(order.truckId),
+                        style: const TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
-                          color: Colors.red,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Order Receipt',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey[700],
+                          color: AppColors.burgundy,
                         ),
                       ),
                     ],
@@ -70,16 +63,14 @@ class ReceiptScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildReceiptRow('Order ID', order.id.substring(0, 8).toUpperCase()),
+                      _buildReceiptRow('Order ID', order.displayOrderNumber != null 
+                          ? 'Order #${order.displayOrderNumber}' 
+                          : order.id.substring(0, 8).toUpperCase()),
                       const Divider(),
                       _buildReceiptRow('Date', _formatDateTime(order.createdAt)),
                       if (order.fawryReferenceNumber.isNotEmpty) ...[
                         const Divider(),
                         _buildReceiptRow('Fawry Ref', order.fawryReferenceNumber),
-                      ],
-                      if (order.merchantRefNumber.isNotEmpty) ...[
-                        const Divider(),
-                        _buildReceiptRow('Merchant Ref', order.merchantRefNumber),
                       ],
                       if (order.invoiceNumber != null) ...[
                         const Divider(),
@@ -128,6 +119,8 @@ class ReceiptScreen extends StatelessWidget {
                                       fontSize: 16,
                                       fontWeight: FontWeight.w500,
                                     ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   if (item.menuItem.description.isNotEmpty) ...[
                                     const SizedBox(height: 4),
@@ -137,6 +130,8 @@ class ReceiptScreen extends StatelessWidget {
                                         fontSize: 12,
                                         color: Colors.grey[600],
                                       ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
                                 ],
@@ -215,6 +210,8 @@ class ReceiptScreen extends StatelessWidget {
                             fontSize: 14,
                             color: Colors.grey[700],
                           ),
+                          maxLines: 5,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -258,18 +255,27 @@ class ReceiptScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[700],
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[700],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text(
-            value,
-            style: valueStyle ?? const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+          Expanded(
+            child: Text(
+              value,
+              style: valueStyle ?? const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.end,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -326,6 +332,21 @@ class ReceiptScreen extends StatelessWidget {
     final hour = date.hour.toString().padLeft(2, '0');
     final minute = date.minute.toString().padLeft(2, '0');
     return '$day/$month/$year $hour:$minute';
+  }
+
+  String _getTruckName(String? truckId) {
+    if (truckId == null || truckId.isEmpty) {
+      return 'Order Receipt';
+    }
+    try {
+      final truck = mockFoodTrucks.firstWhere(
+        (t) => t.id == truckId,
+        orElse: () => mockFoodTrucks.first,
+      );
+      return truck.name;
+    } catch (e) {
+      return 'Order Receipt';
+    }
   }
 }
 

@@ -167,6 +167,8 @@ class _TruckOwnerMenuScreenState extends State<TruckOwnerMenuScreen> {
                                   fontWeight: FontWeight.w600,
                                   fontSize: 16,
                                 ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,6 +180,8 @@ class _TruckOwnerMenuScreenState extends State<TruckOwnerMenuScreen> {
                                       fontSize: 14,
                                       color: AppColors.textSecondary,
                                     ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 8),
                                   Text(

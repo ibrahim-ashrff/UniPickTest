@@ -5,6 +5,7 @@ import '../state/orders_provider.dart';
 import '../models/order.dart';
 import '../utils/page_transitions.dart';
 import '../utils/app_colors.dart';
+import '../data/mock_food_trucks.dart';
 import 'receipt_screen.dart';
 
 /// Screen that displays user's order history
@@ -17,44 +18,6 @@ class OrdersScreen extends StatefulWidget {
 }
 
 class _OrdersScreenState extends State<OrdersScreen> {
-  String? _lastUserId;
-
-  @override
-  void initState() {
-    super.initState();
-    // Load orders when screen opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final user = FirebaseAuth.instance.currentUser;
-      final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
-      
-      // If user changed (logged out and back in), clear and reload orders
-      if (_lastUserId != null && _lastUserId != user?.uid) {
-        ordersProvider.clearOrders();
-      }
-      
-      _lastUserId = user?.uid;
-      
-      // Always load orders when screen opens
-      ordersProvider.loadOrders();
-    });
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Reload orders when screen becomes visible again (e.g., after app restart)
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
-      // Only reload if we don't have orders or if user changed
-      if (ordersProvider.orders.isEmpty || _lastUserId != user.uid) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          ordersProvider.loadOrders();
-        });
-      }
-      _lastUserId = user.uid;
-    }
-  }
 
   String _getStatusColor(String status) {
     switch (status.toLowerCase()) {
@@ -96,17 +59,53 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Orders'),
       ),
-      body: Consumer<OrdersProvider>(
-        builder: (context, ordersProvider, child) {
-          if (ordersProvider.isLoading) {
+      body: StreamBuilder<List<Order>>(
+        stream: user != null ? ordersProvider.getOrdersStream() : Stream.value([]),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final orders = ordersProvider.sortedOrders;
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 80,
+                    color: Colors.red[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error loading orders',
+                    style: TextStyle(
+                      fontSize: 20,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${snapshot.error}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final orders = snapshot.data ?? [];
 
           if (orders.isEmpty) {
             return Center(
@@ -140,7 +139,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
           }
 
           return RefreshIndicator(
-            onRefresh: () => ordersProvider.loadOrders(),
+            onRefresh: () async {
+              // Trigger a reload by calling loadOrders (stream will update automatically)
+              await ordersProvider.loadOrders();
+            },
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: orders.length,
@@ -174,12 +176,26 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Order #${order.id.substring(0, 8).toUpperCase()}',
+                                      _getTruckName(order.truckId),
                                       style: const TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
                                       ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
+                                    if (order.displayOrderNumber != null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Order #${order.displayOrderNumber}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                     const SizedBox(height: 4),
                                     Text(
                                       _formatDate(order.createdAt),
@@ -187,41 +203,49 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                         fontSize: 12,
                                         color: Colors.grey[600],
                                       ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
                                 ),
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _getStatusColorValue(statusColor).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: _getStatusColorValue(statusColor),
-                                    width: 1,
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
                                   ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      statusIcon,
-                                      size: 16,
+                                  decoration: BoxDecoration(
+                                    color: _getStatusColorValue(statusColor).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
                                       color: _getStatusColorValue(statusColor),
+                                      width: 1,
                                     ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      order.status.toUpperCase(),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        statusIcon,
+                                        size: 14,
                                         color: _getStatusColorValue(statusColor),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          order.status.toUpperCase(),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: _getStatusColorValue(statusColor),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
@@ -230,34 +254,43 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '${order.items.length} item${order.items.length != 1 ? 's' : ''}',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[700],
-                                    ),
-                                  ),
-                                  if (order.fawryReferenceNumber.isNotEmpty) ...[
-                                    const SizedBox(height: 4),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      'Ref: ${order.fawryReferenceNumber}',
+                                      '${order.items.length} item${order.items.length != 1 ? 's' : ''}',
                                       style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
+                                        fontSize: 14,
+                                        color: Colors.grey[700],
                                       ),
                                     ),
+                                    if (order.fawryReferenceNumber.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Ref: ${order.fawryReferenceNumber}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ],
-                                ],
+                                ),
                               ),
-                              Text(
-                                '${order.total.toStringAsFixed(2)} EGP',
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.red,
+                              Flexible(
+                                child: Text(
+                                  '${order.total.toStringAsFixed(2)} EGP',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.end,
                                 ),
                               ),
                             ],
@@ -326,6 +359,21 @@ class _OrdersScreenState extends State<OrdersScreen> {
       return '${difference.inDays} days ago';
     } else {
       return '${date.day}/${date.month}/${date.year}';
+    }
+  }
+
+  String _getTruckName(String? truckId) {
+    if (truckId == null || truckId.isEmpty) {
+      return 'Order';
+    }
+    try {
+      final truck = mockFoodTrucks.firstWhere(
+        (t) => t.id == truckId,
+        orElse: () => mockFoodTrucks.first,
+      );
+      return truck.name;
+    } catch (e) {
+      return 'Order';
     }
   }
 }

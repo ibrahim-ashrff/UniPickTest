@@ -14,6 +14,7 @@ import '../state/orders_provider.dart';
 import '../models/order.dart';
 import '../models/cart_item.dart';
 import '../utils/app_colors.dart';
+import '../utils/order_number_generator.dart';
 import 'package:provider/provider.dart';
 
 /// Screen that displays payment status and reference number
@@ -355,6 +356,9 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
       return;
     }
     
+    // Get the next order number for this truck
+    final orderNumber = await OrderNumberGenerator.getNextOrderNumber(cart.currentTruckId);
+    
     // Create order with all details
     final now = DateTime.now();
     final order = Order(
@@ -369,6 +373,7 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
       status: 'paid', // Mark as paid since payment was confirmed
       notes: widget.notes,
       truckId: cart.currentTruckId, // Include truck ID from cart
+      displayOrderNumber: orderNumber, // Sequential order number per truck
     );
     
     debugPrint("📦 Creating order for user: ${user.email}");
@@ -455,6 +460,9 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
       return;
     }
     
+    // Get the next order number for this truck
+    final orderNumber = await OrderNumberGenerator.getNextOrderNumber(cart.currentTruckId);
+    
     // Create order with failed status
     final now = DateTime.now();
     final order = Order(
@@ -469,6 +477,7 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
       status: 'failed', // Mark as failed
       notes: widget.notes,
       truckId: cart.currentTruckId, // Include truck ID from cart
+      displayOrderNumber: orderNumber, // Sequential order number per truck
     );
     
     debugPrint("❌ Creating failed order for user: ${user.email}");
@@ -542,6 +551,9 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
       return;
     }
     
+    // Get the next order number for this truck
+    final orderNumber = await OrderNumberGenerator.getNextOrderNumber(cart.currentTruckId);
+    
     // Create order with expired status
     final now = DateTime.now();
     final order = Order(
@@ -556,6 +568,7 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
       status: 'expired', // Mark as expired
       notes: widget.notes,
       truckId: cart.currentTruckId, // Include truck ID from cart
+      displayOrderNumber: orderNumber, // Sequential order number per truck
     );
     
     debugPrint("⏰ Creating expired order for user: ${user.email}");
@@ -607,7 +620,7 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
         automaticallyImplyLeading: false, // Prevent back button
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -645,6 +658,8 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                         ? AppColors.burgundy
                         : AppColors.burgundy,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               if (_statusMessage != null) ...[
                 const SizedBox(height: 8),
@@ -652,6 +667,8 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                   _statusMessage!,
                   style: Theme.of(context).textTheme.bodyLarge,
                   textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
               const SizedBox(height: 48),
@@ -677,6 +694,7 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                           letterSpacing: 2,
                         ),
                         textAlign: TextAlign.center,
+                        maxLines: 2,
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -699,14 +717,24 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Amount',
-                        style: Theme.of(context).textTheme.titleMedium,
+                      Expanded(
+                        child: Text(
+                          'Amount',
+                          style: Theme.of(context).textTheme.titleMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      Text(
-                        '${widget.amount.toStringAsFixed(2)} EGP',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
+                      Flexible(
+                        child: Text(
+                          '${widget.amount.toStringAsFixed(2)} EGP',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
                         ),
                       ),
                     ],
@@ -742,7 +770,11 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                           '2. Enter the reference number above\n'
                           '3. Complete your payment\n'
                           '4. Status will update automatically when payment is confirmed',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontSize: 13,
+                          ),
+                          maxLines: 6,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -766,6 +798,8 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                               color: Colors.green[700],
                               fontWeight: FontWeight.bold,
                             ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -791,6 +825,8 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                               color: Colors.red[700],
                               fontWeight: FontWeight.bold,
                             ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -816,6 +852,8 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                               color: AppColors.burgundy,
                               fontWeight: FontWeight.bold,
                             ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -824,7 +862,7 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                 ),
               ],
 
-              const Spacer(),
+              const SizedBox(height: 24),
 
               // Polling indicator
               if (_isPolling && !_isPaid)
