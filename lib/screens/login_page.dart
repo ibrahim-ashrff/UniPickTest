@@ -9,8 +9,28 @@ import 'email_password_login_screen.dart';
 import 'main_navigation.dart';
 
 /// Main login screen with logo and sign-in method selection
-class LoginPage extends StatelessWidget {
-  const LoginPage({super.key});
+class LoginPage extends StatefulWidget {
+  final bool isTruckOwner;
+  
+  const LoginPage({super.key, this.isTruckOwner = false});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  bool _isTruckOwner = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // On web, always show owner login (no customer option)
+    if (kIsWeb) {
+      _isTruckOwner = true;
+    } else {
+      _isTruckOwner = widget.isTruckOwner;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -148,7 +168,7 @@ class LoginPage extends StatelessWidget {
                         ),
                       if (!kIsWeb) const SizedBox(height: 10),
                       _AuthButton(
-                        text: 'Log in to your owner account',
+                        text: _isTruckOwner ? 'Log in to your owner account' : 'Log in to your account',
                         onPressed: () {
                           context.slideTo(
                             const EmailPasswordLoginScreen(),

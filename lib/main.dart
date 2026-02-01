@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'firebase_options.dart';
 import 'screens/login_page.dart';
 import 'screens/main_navigation.dart';
@@ -11,12 +13,22 @@ import 'state/orders_provider.dart';
 import 'state/saved_cards_provider.dart';
 import 'state/theme_provider.dart';
 import 'utils/app_colors.dart';
+import 'services/notification_service.dart' show NotificationService, firebaseMessagingBackgroundHandler;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  
+  // Initialize notification service (skips on web)
+  await NotificationService().initialize();
+  
+  // Register background message handler (only on mobile platforms)
+  if (!kIsWeb) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
+  
   runApp(const MyAppWithProviders());
 }
 
@@ -89,7 +101,12 @@ class MyApp extends StatelessWidget {
               if (snapshot.hasData) {
                 return const MainNavigation();
               }
-              return const LoginPage();
+              
+              // On web, always show owner login (no customer option)
+              // On mobile, use default (customer login unless specified)
+              final isOwnerMode = kIsWeb ? true : false;
+              
+              return LoginPage(isTruckOwner: isOwnerMode);
             },
           ),
         );

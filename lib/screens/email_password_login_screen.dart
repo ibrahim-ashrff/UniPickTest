@@ -83,7 +83,7 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
       body: Container(
         color: AppColors.burgundy,
         child: SafeArea(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
             child: Column(
               children: [
@@ -91,18 +91,18 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                 // Image at the top
                 Image.asset(
                   'image-removebg-preview.png',
-                  height: 70,
+                  height: 60,
                   fit: BoxFit.contain,
                   errorBuilder: (context, error, stackTrace) {
                     return const SizedBox.shrink();
                   },
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
                 // Welcome text
                 Text(
                   'Welcome Back',
                   style: GoogleFonts.inter(
-                    fontSize: 24,
+                    fontSize: 22,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
                   ),
@@ -111,18 +111,18 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                 Text(
                   'Sign in to continue',
                   style: GoogleFonts.inter(
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.w400,
                     color: Colors.white.withOpacity(0.8),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
                 TextField(
                   controller: emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     hintText: "Email",
-                    hintStyle: TextStyle(color: Colors.grey[600]),
+                    hintStyle: TextStyle(color: Colors.grey[600], fontSize: 14),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -137,9 +137,12 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(color: AppColors.burgundy, width: 2),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
-                  style: const TextStyle(color: AppColors.textPrimary),
+                  style: GoogleFonts.inter(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                  ),
                   onChanged: (_) {
                     if (loginError != null) {
                       setState(() => loginError = null);
@@ -152,7 +155,7 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                   obscureText: true,
                   decoration: InputDecoration(
                     hintText: "Password",
-                    hintStyle: TextStyle(color: Colors.grey[600]),
+                    hintStyle: TextStyle(color: Colors.grey[600], fontSize: 14),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -167,9 +170,12 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(color: AppColors.burgundy, width: 2),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
-                  style: const TextStyle(color: AppColors.textPrimary),
+                  style: GoogleFonts.inter(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                  ),
                   onChanged: (_) {
                     if (loginError != null) {
                       setState(() => loginError = null);
@@ -187,24 +193,24 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.error_outline, color: Colors.white, size: 18),
+                        const Icon(Icons.error_outline, color: Colors.white, size: 16),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             loginError!,
                             style: GoogleFonts.inter(
                               color: Colors.white,
-                              fontSize: 13,
+                              fontSize: 12,
                             ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                const Spacer(),
+                const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
-                  height: 48,
+                  height: 46,
                   child: ElevatedButton(
                     onPressed: loading ? null : _login,
                     style: ElevatedButton.styleFrom(
@@ -218,7 +224,7 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                     child: Text(
                       loading ? "Loading..." : "Login",
                       style: GoogleFonts.inter(
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -234,7 +240,7 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                         "Don't have an account? ",
                         style: GoogleFonts.inter(
                           color: Colors.white.withOpacity(0.8),
-                          fontSize: 13,
+                          fontSize: 12,
                         ),
                       ),
                       TextButton(
@@ -255,7 +261,7 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                           "Sign up",
                           style: GoogleFonts.inter(
                             color: Colors.white,
-                            fontSize: 13,
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                             decoration: TextDecoration.underline,
                           ),

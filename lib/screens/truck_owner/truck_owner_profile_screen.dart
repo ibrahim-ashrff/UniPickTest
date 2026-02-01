@@ -110,7 +110,7 @@ class TruckOwnerProfileScreen extends StatelessWidget {
                     if (context.mounted) {
                       Navigator.of(context).pushAndRemoveUntil(
                         MaterialPageRoute(
-                          builder: (context) => const LoginPage(),
+                          builder: (context) => const LoginPage(isTruckOwner: true),
                         ),
                         (route) => false,
                       );

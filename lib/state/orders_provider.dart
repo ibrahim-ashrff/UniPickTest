@@ -4,10 +4,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/order.dart' as app_models;
 import '../models/cart_item.dart';
 import '../models/menu_item.dart';
+import '../services/notification_service.dart';
 
 class OrdersProvider extends ChangeNotifier {
   final List<app_models.Order> _orders = [];
   bool _isLoading = false;
+  // Track previous order statuses to detect changes
+  final Map<String, String> _previousStatuses = {};
+  bool _isInitialLoad = true;
 
   List<app_models.Order> get orders => List.unmodifiable(_orders);
   bool get isLoading => _isLoading;
@@ -22,6 +26,8 @@ class OrdersProvider extends ChangeNotifier {
   // Clear all orders (useful when user logs out)
   void clearOrders() {
     _orders.clear();
+    _previousStatuses.clear();
+    _isInitialLoad = true;
     notifyListeners();
   }
 
@@ -89,6 +95,7 @@ class OrdersProvider extends ChangeNotifier {
         
         debugPrint("✅✅✅ Order successfully saved to Firestore 'orders' collection! ✅✅✅");
         debugPrint("   - Order ID: ${order.id}");
+        debugPrint("   - Order Number: #${order.displayOrderNumber ?? 'N/A'} (Truck: ${order.truckId ?? 'N/A'})");
         debugPrint("   - User: ${user.email} (${user.uid})");
         debugPrint("   - Amount: ${order.total} EGP");
         debugPrint("   - Status: ${order.status}");
@@ -206,6 +213,17 @@ class OrdersProvider extends ChangeNotifier {
       
       // Sort by createdAt (descending - newest first)
       orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
+      // Check for status changes and show notifications (skip on initial load)
+      if (!_isInitialLoad) {
+        _checkStatusChanges(orders);
+      } else {
+        // On initial load, just populate previous statuses without showing notifications
+        for (final order in orders) {
+          _previousStatuses[order.id] = order.status.toLowerCase();
+        }
+        _isInitialLoad = false;
+      }
       
       // Update local state
       _orders.clear();
@@ -361,6 +379,35 @@ class OrdersProvider extends ChangeNotifier {
       } catch (e) {
         debugPrint("Error updating order status: $e");
       }
+    }
+  }
+
+  // Check for status changes and trigger notifications
+  void _checkStatusChanges(List<app_models.Order> orders) {
+    for (final order in orders) {
+      final previousStatus = _previousStatuses[order.id];
+      final currentStatus = order.status.toLowerCase();
+      
+      // If status changed and it's not the initial load
+      if (previousStatus != null && previousStatus != currentStatus) {
+        // Only notify for meaningful status changes (not from pending/paid initial states)
+        final notifyStatuses = ['preparing', 'ready', 'completed', 'cancelled'];
+        if (notifyStatuses.contains(currentStatus)) {
+          final orderNumber = order.displayOrderNumber?.toString() ?? 
+                            order.merchantRefNumber.substring(0, 6);
+          
+          NotificationService().showOrderStatusNotification(
+            orderId: order.id,
+            orderNumber: orderNumber,
+            status: currentStatus,
+          );
+          
+          debugPrint('🔔 Status changed for order ${order.id}: $previousStatus -> $currentStatus');
+        }
+      }
+      
+      // Update previous status
+      _previousStatuses[order.id] = currentStatus;
     }
   }
 

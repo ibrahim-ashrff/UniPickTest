@@ -14,7 +14,16 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
-        maven(url = "https://nexusmobile.fawrystaging.com:2597/repository/maven-public/")
+        maven {
+            url = uri("https://nexusmobile.fawrystaging.com:2597/repository/maven-public/")
+            isAllowInsecureProtocol = false
+            metadataSources {
+                mavenPom()
+                artifact()
+                // Skip gradleModule() to avoid hanging on metadata checks
+            }
+            // Removed content filter to allow all dependencies from this repository
+        }
     }
 }
 
@@ -24,7 +33,16 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven(url = "https://storage.googleapis.com/download.flutter.io")
-        maven(url = "https://nexusmobile.fawrystaging.com:2597/repository/maven-public/")
+        maven {
+            url = uri("https://nexusmobile.fawrystaging.com:2597/repository/maven-public/")
+            isAllowInsecureProtocol = false
+            metadataSources {
+                mavenPom()
+                artifact()
+                // Skip gradleModule() to avoid hanging on metadata checks
+            }
+            // Removed content filter to allow all dependencies from this repository
+        }
     }
 }
 

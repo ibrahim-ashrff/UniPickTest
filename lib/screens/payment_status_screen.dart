@@ -47,6 +47,8 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
   bool _isFailed = false;
   bool _isExpired = false;
   bool _orderHandled = false; // Flag to prevent duplicate order creation
+  bool _failedOrderHandled = false; // Flag to prevent duplicate failed order creation
+  bool _expiredOrderHandled = false; // Flag to prevent duplicate expired order creation
   late StreamSubscription _paymentStreamSubscription;
   Timer? _pollingTimer;
   bool _isPolling = false;
@@ -70,12 +72,11 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
           initialStatusStr == 'CANCELLED') {
         debugPrint("❌ Payment already failed - handling immediately");
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && !_orderHandled) {
+          if (mounted && !_failedOrderHandled && !_orderHandled) {
             setState(() {
               _status = 'Failed';
               _isFailed = true;
               _statusMessage = 'Payment failed';
-              _orderHandled = true; // Mark as handled to prevent duplicates
             });
             _handleFailedOrder();
           }
@@ -86,12 +87,11 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                  initialStatusStr == 'EXPIRY') {
         debugPrint("⏰ Payment already expired - handling immediately");
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && !_orderHandled) {
+          if (mounted && !_expiredOrderHandled && !_orderHandled) {
             setState(() {
               _status = 'Expired';
               _isExpired = true;
               _statusMessage = 'Payment expired';
-              _orderHandled = true; // Mark as handled to prevent duplicates
             });
             _handleExpiredOrder();
           }
@@ -195,12 +195,11 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                    orderStatusStr == 'CANCELLED' ||
                    orderStatusStr == '101') {
           _pollingTimer?.cancel();
-          if (mounted && !_orderHandled) {
+          if (mounted && !_failedOrderHandled && !_orderHandled) {
             setState(() {
               _status = 'Failed';
               _isFailed = true;
               _statusMessage = statusDescription.isNotEmpty ? statusDescription : 'Payment failed';
-              _orderHandled = true; // Mark as handled to prevent duplicates
             });
             _handleFailedOrder();
           }
@@ -208,12 +207,11 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                    orderStatusStr == 'TIMEOUT' ||
                    orderStatusStr == 'EXPIRY') {
           _pollingTimer?.cancel();
-          if (mounted && !_orderHandled) {
+          if (mounted && !_expiredOrderHandled && !_orderHandled) {
             setState(() {
               _status = 'Expired';
               _isExpired = true;
               _statusMessage = statusDescription.isNotEmpty ? statusDescription : 'Payment expired';
-              _orderHandled = true; // Mark as handled to prevent duplicates
             });
             _handleExpiredOrder();
           }
@@ -300,17 +298,15 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
           });
 
           // Handle different statuses (only if not already handled)
-          if (_isPaid && !_orderHandled) {
+          if (_isPaid && !_orderHandled && !_failedOrderHandled && !_expiredOrderHandled) {
             _orderHandled = true; // Mark as handled to prevent duplicates
             _completeOrder();
-          } else if (_isFailed && !_orderHandled) {
+          } else if (_isFailed && !_failedOrderHandled && !_orderHandled) {
             debugPrint("🔄 Calling _handleFailedOrder() from callback listener");
-            _orderHandled = true; // Mark as handled to prevent duplicates
             _handleFailedOrder();
-          } else if (_isExpired && !_orderHandled) {
-            _orderHandled = true; // Mark as handled to prevent duplicates
+          } else if (_isExpired && !_expiredOrderHandled && !_orderHandled) {
             _handleExpiredOrder();
-          } else if (_orderHandled) {
+          } else if (_orderHandled || _failedOrderHandled || _expiredOrderHandled) {
             debugPrint("⚠️ Order already handled, skipping duplicate processing");
           }
         } catch (e) {
@@ -431,185 +427,93 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
   }
 
   void _handleFailedOrder() async {
-    final cart = Provider.of<CartProvider>(context, listen: false);
-    final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
-    final user = FirebaseAuth.instance.currentUser;
-    
-    if (user == null) {
-      debugPrint("❌ Cannot save failed order - user not logged in");
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const MainNavigation(initialIndex: 1)),
-          (route) => false,
-        );
-      }
+    // Prevent duplicate failed order handling
+    if (_failedOrderHandled || _orderHandled) {
+      debugPrint("⚠️ Failed order already handled, skipping duplicate handling");
       return;
     }
     
-    // Save cart items before clearing (properly typed)
-    final cartItems = List<CartItem>.from(cart.items);
+    // Mark as handled immediately to prevent race conditions
+    _failedOrderHandled = true;
     
-    if (cartItems.isEmpty) {
-      debugPrint("❌ Cannot save failed order - cart is empty");
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const MainNavigation(initialIndex: 1)),
-          (route) => false,
-        );
-      }
-      return;
-    }
+    debugPrint("❌ Payment failed - NOT creating order (only successful payments create orders)");
+    debugPrint("   - Fawry Ref: ${widget.referenceNumber}");
+    debugPrint("   - User can try again with the same cart");
     
-    // Get the next order number for this truck
-    final orderNumber = await OrderNumberGenerator.getNextOrderNumber(cart.currentTruckId);
-    
-    // Create order with failed status
-    final now = DateTime.now();
-    final order = Order(
-      id: 'order_${now.millisecondsSinceEpoch}',
-      fawryReferenceNumber: widget.referenceNumber,
-      merchantRefNumber: widget.merchantRefNum,
-      items: cartItems,
-      total: widget.amount,
-      subtotal: cart.subtotal,
-      fawryFees: widget.amount > cart.subtotal ? widget.amount - cart.subtotal : null,
-      createdAt: now,
-      status: 'failed', // Mark as failed
-      notes: widget.notes,
-      truckId: cart.currentTruckId, // Include truck ID from cart
-      displayOrderNumber: orderNumber, // Sequential order number per truck
-    );
-    
-    debugPrint("❌ Creating failed order for user: ${user.email}");
-    debugPrint("   - Order ID: ${order.id}");
-    debugPrint("   - Items: ${cartItems.length}");
-    debugPrint("   - Total: ${order.total} EGP");
-    debugPrint("   - Fawry Ref: ${order.fawryReferenceNumber}");
-    debugPrint("   - Status: ${order.status}");
-    
-    // Save failed order to provider (which will save to Firestore)
-    debugPrint("🔄 Calling ordersProvider.addOrder() for failed order...");
-    try {
-      await ordersProvider.addOrder(order);
-      debugPrint("✅ Failed order saved to Firestore");
-    } catch (e, stackTrace) {
-      debugPrint("❌❌❌ ERROR saving failed order ❌❌❌");
-      debugPrint("   Error: $e");
-      debugPrint("   Stack Trace: $stackTrace");
-    }
-    
-    // Don't clear cart for failed orders - let user try again
+    // Don't create an order for failed payments
+    // Don't consume an order number
+    // Don't clear cart - let user try again
     
     // Wait a moment to show failed state
     await Future.delayed(const Duration(seconds: 2));
 
     if (!mounted) return;
 
-    // Navigate to orders screen to show the failed order (like successful payments)
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const MainNavigation(initialIndex: 1)),
-      (route) => false,
-    );
+    // Navigate back to checkout or menu (not orders screen since no order was created)
+    try {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const MainNavigation(initialIndex: 0)),
+        (route) => false,
+      );
 
-    // Show failure snackbar
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Payment failed. Order saved to history.'),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+      // Show failure snackbar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Payment failed. Please try again.'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("⚠️ Error navigating after failed payment: $e");
+    }
   }
 
   void _handleExpiredOrder() async {
-    final cart = Provider.of<CartProvider>(context, listen: false);
-    final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
-    final user = FirebaseAuth.instance.currentUser;
-    
-    if (user == null) {
-      debugPrint("❌ Cannot save expired order - user not logged in");
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const MainNavigation(initialIndex: 1)),
-          (route) => false,
-        );
-      }
+    // Prevent duplicate expired order handling
+    if (_expiredOrderHandled || _orderHandled) {
+      debugPrint("⚠️ Expired order already handled, skipping duplicate handling");
       return;
     }
     
-    // Save cart items before clearing (properly typed)
-    final cartItems = List<CartItem>.from(cart.items);
+    // Mark as handled immediately to prevent race conditions
+    _expiredOrderHandled = true;
     
-    if (cartItems.isEmpty) {
-      debugPrint("❌ Cannot save expired order - cart is empty");
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const MainNavigation(initialIndex: 1)),
-          (route) => false,
-        );
-      }
-      return;
-    }
+    debugPrint("⏰ Payment expired - NOT creating order (only successful payments create orders)");
+    debugPrint("   - Fawry Ref: ${widget.referenceNumber}");
+    debugPrint("   - User can try again with the same cart");
     
-    // Get the next order number for this truck
-    final orderNumber = await OrderNumberGenerator.getNextOrderNumber(cart.currentTruckId);
-    
-    // Create order with expired status
-    final now = DateTime.now();
-    final order = Order(
-      id: 'order_${now.millisecondsSinceEpoch}',
-      fawryReferenceNumber: widget.referenceNumber,
-      merchantRefNumber: widget.merchantRefNum,
-      items: cartItems,
-      total: widget.amount,
-      subtotal: cart.subtotal,
-      fawryFees: widget.amount > cart.subtotal ? widget.amount - cart.subtotal : null,
-      createdAt: now,
-      status: 'expired', // Mark as expired
-      notes: widget.notes,
-      truckId: cart.currentTruckId, // Include truck ID from cart
-      displayOrderNumber: orderNumber, // Sequential order number per truck
-    );
-    
-    debugPrint("⏰ Creating expired order for user: ${user.email}");
-    debugPrint("   - Order ID: ${order.id}");
-    debugPrint("   - Items: ${cartItems.length}");
-    debugPrint("   - Total: ${order.total} EGP");
-    debugPrint("   - Fawry Ref: ${order.fawryReferenceNumber}");
-    debugPrint("   - Status: ${order.status}");
-    
-    // Save expired order to provider (which will save to Firestore)
-    debugPrint("🔄 Calling ordersProvider.addOrder() for expired order...");
-    try {
-      await ordersProvider.addOrder(order);
-      debugPrint("✅ Expired order saved to Firestore");
-    } catch (e, stackTrace) {
-      debugPrint("❌❌❌ ERROR saving expired order ❌❌❌");
-      debugPrint("   Error: $e");
-      debugPrint("   Stack Trace: $stackTrace");
-    }
-    
-    // Don't clear cart for expired orders - let user try again
+    // Don't create an order for expired payments
+    // Don't consume an order number
+    // Don't clear cart - let user try again
     
     // Wait a moment to show expired state
     await Future.delayed(const Duration(seconds: 2));
 
     if (!mounted) return;
 
-    // Navigate to orders screen to show the expired order (like successful payments)
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const MainNavigation(initialIndex: 1)),
-      (route) => false,
-    );
+    // Navigate back to checkout or menu (not orders screen since no order was created)
+    try {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const MainNavigation(initialIndex: 0)),
+        (route) => false,
+      );
 
-    // Show expired snackbar
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Payment expired. Order saved to history.'),
-        backgroundColor: AppColors.burgundy,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+      // Show expired snackbar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Payment expired. Please try again.'),
+            backgroundColor: AppColors.burgundy,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("⚠️ Error navigating after expired payment: $e");
+    }
   }
 
   @override
