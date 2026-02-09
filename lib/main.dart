@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,18 +17,25 @@ import 'state/theme_provider.dart';
 import 'utils/app_colors.dart';
 import 'services/notification_service.dart' show NotificationService, firebaseMessagingBackgroundHandler;
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb) {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
   
-  // Initialize notification service (skips on web)
-  await NotificationService().initialize();
-  
-  // Register background message handler (only on mobile platforms)
+  // Initialize notification service (skips on web) - must not block app startup
+  // On iOS, getToken() can fail if APNS token isn't ready yet, so we run in background
   if (!kIsWeb) {
+    NotificationService.navigatorKey = navigatorKey;
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    unawaited(NotificationService().initialize().catchError((e, st) {
+      debugPrint('NotificationService init failed (app will still run): $e');
+    }));
   }
   
   runApp(const MyAppWithProviders());
@@ -40,6 +49,7 @@ class MyApp extends StatelessWidget {
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         return MaterialApp(
+          navigatorKey: navigatorKey,
           title: 'UNIPICK',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(

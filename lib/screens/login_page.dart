@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:io' show Platform;
 import '../utils/app_colors.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/bottom_wave.dart';
@@ -167,6 +168,37 @@ class _LoginPageState extends State<LoginPage> {
                           },
                         ),
                       if (!kIsWeb) const SizedBox(height: 10),
+                      if (!kIsWeb && Platform.isIOS)
+                        _AuthButton(
+                          text: 'Continue with Apple',
+                          onPressed: () async {
+                            try {
+                              final authService = AuthService();
+                              final userCredential = await authService.signInWithApple();
+
+                              if (userCredential != null && context.mounted) {
+                                context.slideReplacementAll(
+                                  const MainNavigation(),
+                                  direction: SlideDirection.left,
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                final errorMessage = e.toString().contains('canceled')
+                                    ? 'Sign in was canceled'
+                                    : 'Error: ${e.toString()}';
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(errorMessage),
+                                    backgroundColor: Colors.red,
+                                    duration: const Duration(seconds: 4),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      if (!kIsWeb && Platform.isIOS) const SizedBox(height: 10),
                       _AuthButton(
                         text: _isTruckOwner ? 'Log in to your owner account' : 'Log in to your account',
                         onPressed: () {

@@ -49,7 +49,7 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
   bool _orderHandled = false; // Flag to prevent duplicate order creation
   bool _failedOrderHandled = false; // Flag to prevent duplicate failed order creation
   bool _expiredOrderHandled = false; // Flag to prevent duplicate expired order creation
-  late StreamSubscription _paymentStreamSubscription;
+  StreamSubscription? _paymentStreamSubscription;
   Timer? _pollingTimer;
   bool _isPolling = false;
   
@@ -62,12 +62,13 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
     super.initState();
     
     // Check initial status if provided (e.g., from checkout screen when payment fails immediately)
+    // NOTE: 102 with UNPAID = pending (awaiting payment at Fawry), NOT failed - do not pass 102 as initialStatus
     if (widget.initialStatus != null) {
       final initialStatusStr = widget.initialStatus!.toUpperCase();
       debugPrint("PaymentStatusScreen: Initial status provided: $initialStatusStr");
       
+      // Only 101, FAILED, CANCELLED = immediate failure. 102 = pending (user got ref number)
       if (initialStatusStr == '101' || 
-          initialStatusStr == '102' || 
           initialStatusStr == 'FAILED' || 
           initialStatusStr == 'CANCELLED') {
         debugPrint("❌ Payment already failed - handling immediately");
@@ -106,7 +107,7 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
 
   @override
   void dispose() {
-    _paymentStreamSubscription.cancel();
+    _paymentStreamSubscription?.cancel();
     _pollingTimer?.cancel();
     super.dispose();
   }
@@ -268,29 +269,43 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
           final message = response.message ?? '';
           final error = response.error ?? '';
 
-          debugPrint("PaymentStatusScreen: Status=$status, Message=$message, Error=$error");
+          // Parse orderStatus from data - 102 with UNPAID = awaiting payment, NOT failed
+          String? orderStatusFromData;
+          if (response.data != null) {
+            try {
+              final dataJson = jsonDecode(response.data!);
+              if (dataJson is Map) {
+                orderStatusFromData = (dataJson['orderStatus'] ?? '').toString().toUpperCase();
+              }
+            } catch (_) {}
+          }
+
+          debugPrint("PaymentStatusScreen: Status=$status, orderStatus=$orderStatusFromData");
 
           setState(() {
             _statusMessage = message.isNotEmpty ? message : (error.isNotEmpty && status != "PAID" && status != "SUCCESS" ? error : '');
             
             // Check for PAID/SUCCESS first - prioritize success
-            if (status == "PAID" || status == "SUCCESS" || status == "200") {
+            if (status == "PAID" || status == "SUCCESS" || status == "200" || orderStatusFromData == 'PAID') {
               _status = 'Paid';
               _isPaid = true;
               debugPrint("✅ Payment successful detected - Status: $status");
             } else if (status == "101" || 
-                      status == "102" || 
                       status == "FAILED" || 
-                      status == "CANCELLED") {
-              // Only mark as failed if status explicitly indicates failure
-              // Don't rely on error field alone - it might be present for other reasons
+                      status == "CANCELLED" ||
+                      orderStatusFromData == 'FAILED') {
+              // 102 with UNPAID = pending (user got ref number, awaiting payment at Fawry)
               _status = 'Failed';
               _isFailed = true;
-              debugPrint("❌ Payment failed detected - Status: $status, Error: $error");
+              debugPrint("❌ Payment failed detected - Status: $status");
+            } else if (status == "102" && (orderStatusFromData == 'UNPAID' || orderStatusFromData == 'PENDING' || orderStatusFromData == '')) {
+              // 102 + UNPAID = pending - user completed flow, awaiting payment
+              _status = 'Pending';
+              debugPrint("⏳ Payment pending - Status: 102, orderStatus: $orderStatusFromData");
             } else if (status == "EXPIRED" || status == "TIMEOUT" || status == "EXPIRY") {
               _status = 'Expired';
               _isExpired = true;
-            } else if (status == "PENDING" || status == "") {
+            } else if (status == "PENDING" || status == "102" || status == "") {
               _status = 'Pending';
             } else {
               _status = status;

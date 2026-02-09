@@ -94,9 +94,9 @@ class _TruckOwnerDashboardScreenState extends State<TruckOwnerDashboardScreen> {
           }
         }
 
-        // Exclude failed orders
+        // Truck owners don't see pending/unpaid (customer-only until paid) or failed
         final status = (order['status'] ?? '').toString().toLowerCase();
-        if (status == 'failed') {
+        if (status == 'failed' || status == 'pending' || status == 'unpaid') {
           return false;
         }
 
@@ -149,6 +149,9 @@ class _TruckOwnerDashboardScreenState extends State<TruckOwnerDashboardScreen> {
     switch (status.toLowerCase()) {
       case 'paid':
         return Colors.blue;
+      case 'pending':
+      case 'unpaid':
+        return Colors.orange; // Awaiting payment
       case 'preparing':
         return AppColors.burgundy;
       case 'ready':

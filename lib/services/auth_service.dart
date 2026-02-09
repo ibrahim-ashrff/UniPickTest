@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 class AuthService {
   // Use the web client ID from Firebase Console for server-side authentication
@@ -82,6 +83,69 @@ class AuthService {
   Future<void> signOut() async {
     await _googleSignIn.signOut();
     await _auth.signOut();
+  }
+
+  Future<UserCredential?> signInWithApple() async {
+    try {
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+
+      final oauthCredential = OAuthProvider('apple.com').credential(
+        idToken: appleCredential.identityToken,
+        accessToken: appleCredential.authorizationCode,
+      );
+
+      final UserCredential userCredential =
+          await _auth.signInWithCredential(oauthCredential);
+
+      final user = userCredential.user;
+      if (user != null) {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+
+        final displayName = user.displayName ??
+            [
+              appleCredential.givenName,
+              appleCredential.familyName,
+            ].where((part) => part != null && part!.isNotEmpty).join(' ').trim();
+
+        if (!userDoc.exists) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
+            'name': displayName.isNotEmpty ? displayName : 'Apple User',
+            'email': user.email ?? appleCredential.email ?? '',
+            'photoURL': user.photoURL ?? '',
+            'role': 'customer',
+            'createdAt': FieldValue.serverTimestamp(),
+            'lastLogin': FieldValue.serverTimestamp(),
+            'provider': 'apple',
+          });
+        } else {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({
+            'name': displayName.isNotEmpty ? displayName : (user.displayName ?? ''),
+            'email': user.email ?? appleCredential.email ?? '',
+            'lastLogin': FieldValue.serverTimestamp(),
+            'provider': 'apple',
+          });
+        }
+      }
+
+      return userCredential;
+    } catch (e) {
+      print('Error signing in with Apple: $e');
+      rethrow;
+    }
   }
 }
 

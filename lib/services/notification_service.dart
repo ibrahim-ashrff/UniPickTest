@@ -3,7 +3,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
 import 'dart:io' show Platform;
+import '../screens/main_navigation.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -16,6 +18,9 @@ class NotificationService {
 
   bool _initialized = false;
   String? _fcmToken;
+
+  /// Set this from main.dart so notification taps can navigate
+  static GlobalKey<NavigatorState>? navigatorKey;
 
   String? get fcmToken => _fcmToken;
 
@@ -35,6 +40,15 @@ class NotificationService {
 
     // Initialize local notifications
     await _initializeLocalNotifications();
+
+    // iOS: Show notifications in foreground (banner, sound, badge, notification center)
+    if (Platform.isIOS) {
+      await _fcm.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    }
 
     // Get FCM token
     await _getFCMToken();
@@ -180,40 +194,35 @@ class NotificationService {
     print('   Body: ${message.notification?.body}');
     print('   Data: ${message.data}');
 
-    // Show local notification
+    // Show local notification (appears in notification center with sound)
     await _showLocalNotification(message);
   }
 
-  // Handle background messages (app is in background or terminated)
+  // Handle notification opened (app was in background or terminated)
   void _handleBackgroundMessage(RemoteMessage message) {
-    print('📬 Background message received: ${message.messageId}');
-    print('   Title: ${message.notification?.title}');
-    print('   Body: ${message.notification?.body}');
-    print('   Data: ${message.data}');
-
-    // Navigate to orders screen or specific order
-    // You can use a navigation service or provider here
-    final orderId = message.data['orderId'];
-    if (orderId != null) {
-      // Navigate to order details
-      // NavigationService.navigateToOrder(orderId);
-    }
+    print('📬 Notification opened: ${message.messageId}');
+    // Defer navigation so the app has time to build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _navigateToOrders();
+    });
   }
 
-  // Show local notification from FCM message
+  // Show local notification from FCM message (appears in notification center with sound)
   Future<void> _showLocalNotification(RemoteMessage message) async {
     final notification = message.notification;
-    if (notification == null) return;
+    final data = message.data;
+    final title = notification?.title ?? data['title'] ?? 'UniPick';
+    final body = notification?.body ?? data['body'] ?? 'You have a new notification';
+    final orderId = data['orderId'] ?? data['order_id'];
 
     const androidDetails = AndroidNotificationDetails(
-      'order_updates', // channel id
-      'Order Updates', // channel name
+      'order_updates',
+      'Order Updates',
       channelDescription: 'Notifications for order status updates',
       importance: Importance.high,
       priority: Priority.high,
       playSound: true,
       enableVibration: true,
-      // Use default notification sound
       icon: '@mipmap/ic_launcher',
     );
 
@@ -221,6 +230,7 @@ class NotificationService {
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      interruptionLevel: InterruptionLevel.active,
     );
 
     const details = NotificationDetails(
@@ -230,10 +240,10 @@ class NotificationService {
 
     await _localNotifications.show(
       message.hashCode,
-      notification.title,
-      notification.body,
+      title,
+      body,
       details,
-      payload: message.data['orderId'],
+      payload: orderId,
     );
   }
 
@@ -303,14 +313,19 @@ class NotificationService {
     }
   }
 
-  // Handle notification tap
+  // Handle notification tap - navigate to Orders screen
   void _onNotificationTapped(NotificationResponse response) {
     print('🔔 Notification tapped: ${response.payload}');
-    final orderId = response.payload;
-    if (orderId != null) {
-      // Navigate to order details
-      // NavigationService.navigateToOrder(orderId);
-    }
+    _navigateToOrders();
+  }
+
+  void _navigateToOrders() {
+    final context = navigatorKey?.currentContext;
+    if (context == null) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const MainNavigation(initialIndex: 1)),
+      (route) => false,
+    );
   }
 
   // Subscribe to order updates topic (optional)

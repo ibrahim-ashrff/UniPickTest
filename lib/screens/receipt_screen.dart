@@ -311,7 +311,8 @@ class ReceiptScreen extends StatelessWidget {
       case 'paid':
         return Colors.green;
       case 'pending':
-        return AppColors.burgundy;
+      case 'unpaid':
+        return AppColors.burgundy; // Awaiting payment
       case 'preparing':
         return Colors.blue;
       case 'ready':

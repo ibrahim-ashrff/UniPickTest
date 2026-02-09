@@ -31,15 +31,21 @@ class OrdersProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Add a new order (saves to Firestore if status is 'paid' or 'failed')
+  // Add a new order (saves to Firestore if status is 'paid', 'failed', 'expired', or 'pending'/'unpaid')
+  // UNPAID orders are normalized to 'pending' - never stored as 'failed' until payment explicitly fails
   Future<void> addOrder(app_models.Order order) async {
     _orders.add(order);
     notifyListeners();
 
-    // Save to Firestore if order is paid, failed, or expired
-    final status = order.status.toLowerCase();
-    if (status != 'paid' && status != 'failed' && status != 'expired') {
-      debugPrint("Order not saved to Firestore - status is not 'paid', 'failed', or 'expired': ${order.status}");
+    // Normalize status: 'unpaid' -> 'pending' (never treat unpaid as failed)
+    String status = order.status.toLowerCase();
+    if (status == 'unpaid') {
+      status = 'pending';
+    }
+
+    // Save to Firestore for paid, failed, expired, or pending (awaiting payment)
+    if (status != 'paid' && status != 'failed' && status != 'expired' && status != 'pending') {
+      debugPrint("Order not saved to Firestore - status is not 'paid', 'failed', 'expired', or 'pending': ${order.status}");
       return;
     }
 
@@ -54,6 +60,8 @@ class OrdersProvider extends ChangeNotifier {
         debugPrint("   - Order Status: ${order.status}");
         
         final orderData = order.toFirestoreJson();
+        // Store normalized status (unpaid -> pending)
+        orderData['status'] = status;
         debugPrint("   - Order data prepared (${orderData.length} fields)");
         
         // Add user information
@@ -188,6 +196,9 @@ class OrdersProvider extends ChangeNotifier {
           }
           
           final createdAt = (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+          // Normalize: 'unpaid' -> 'pending' (never treat unpaid as failed)
+          String orderStatus = (data['status'] ?? 'pending').toString().toLowerCase();
+          if (orderStatus == 'unpaid') orderStatus = 'pending';
           
           final order = app_models.Order(
             id: doc.id,
@@ -198,7 +209,7 @@ class OrdersProvider extends ChangeNotifier {
             subtotal: (data['subtotal'] ?? 0).toDouble(),
             fawryFees: data['fawryFees']?.toDouble(),
             createdAt: createdAt,
-            status: data['status'] ?? 'pending',
+            status: orderStatus,
             notes: data['notes'],
             invoiceNumber: data['invoiceNumber'],
             businessRefNumber: data['businessRefNumber'],
@@ -291,6 +302,9 @@ class OrdersProvider extends ChangeNotifier {
           }
           
           final createdAt = (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+          // Normalize: 'unpaid' -> 'pending' (never treat unpaid as failed)
+          String orderStatus = (data['status'] ?? 'pending').toString().toLowerCase();
+          if (orderStatus == 'unpaid') orderStatus = 'pending';
           
           final order = app_models.Order(
             id: doc.id,
@@ -301,7 +315,7 @@ class OrdersProvider extends ChangeNotifier {
             subtotal: (data['subtotal'] ?? 0).toDouble(),
             fawryFees: data['fawryFees']?.toDouble(),
             createdAt: createdAt,
-            status: data['status'] ?? 'pending',
+            status: orderStatus,
             notes: data['notes'],
             invoiceNumber: data['invoiceNumber'],
             businessRefNumber: data['businessRefNumber'],

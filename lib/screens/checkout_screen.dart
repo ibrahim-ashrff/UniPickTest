@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../state/cart_provider.dart';
@@ -19,6 +20,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final TextEditingController _notesController = TextEditingController();
   bool _isProcessing = false;
   String? _currentMerchantRefNum; // Store merchantRefNum from pay() call
+  // TODO: Replace with your real Apple Pay Merchant ID (e.g., merchant.com.yourapp)
+  static const String _applePayMerchantId = 'merchant.com.yourapp';
 
   @override
   void initState() {
@@ -41,13 +44,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final statusStr = (response.status ?? '').toString().toUpperCase();
         final isPaid = statusStr == 'PAID' || statusStr == 'SUCCESS' || statusStr == '200';
         
-        // Only mark as failed if NOT paid and matches failure conditions
-        // Don't check error field alone - it might be present even for successful payments
+        // Parse orderStatus from data - 102 with UNPAID means "awaiting payment at Fawry", NOT failed
+        String? orderStatusFromData;
+        if (response.data != null) {
+          try {
+            final dataJson = jsonDecode(response.data!);
+            if (dataJson is Map) {
+              orderStatusFromData = (dataJson['orderStatus'] ?? '').toString().toUpperCase();
+            }
+          } catch (_) {}
+        }
+        
+        // Only mark as failed if orderStatus is explicitly FAILED, or status is 101/CANCELLED
+        // 102 with UNPAID = pending (user got reference number, awaiting payment at Fawry)
         final isFailed = !isPaid && (
                         statusStr == '101' || 
-                        statusStr == '102' || 
                         statusStr == 'FAILED' || 
-                        statusStr == 'CANCELLED');
+                        statusStr == 'CANCELLED' ||
+                        orderStatusFromData == 'FAILED');
         
         debugPrint("🔍 Payment Status Check:");
         debugPrint("   - Status String: $statusStr");
@@ -303,6 +317,65 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  Future<void> _processApplePay(BuildContext context) async {
+    final cart = Provider.of<CartProvider>(context, listen: false);
+
+    if (cart.items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cart is empty')),
+      );
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final firebaseUser = user;
+      if (firebaseUser == null) {
+        throw Exception('User not logged in');
+      }
+
+      final customerProfileId = firebaseUser.uid;
+      final customerName = firebaseUser.displayName ?? firebaseUser.email ?? "UNIPICK User";
+      final customerEmail = firebaseUser.email ?? "test@test.com";
+
+      final merchantRefNum = await FawryPayment.pay(
+        merchantCode: "770000021908",
+        secureHashKey: "b4afb94e0a554815a17ed505de2f9e67",
+        customerProfileId: customerProfileId,
+        customerName: customerName,
+        customerEmail: customerEmail,
+        customerMobile: "01012345678",
+        amountEgp: cart.total.toDouble(),
+        enableApplePay: true,
+        applePayMerchantId: _applePayMerchantId,
+      );
+
+      _currentMerchantRefNum = merchantRefNum;
+      debugPrint("Generated merchantRefNum (Apple Pay): $merchantRefNum");
+
+      Future.delayed(const Duration(seconds: 20), () {
+        if (!mounted) return;
+        if (_isProcessing) {
+          setState(() => _isProcessing = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("No response from Fawry yet. Check logcat.")),
+          );
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   Future<void> _placeOrder(BuildContext context, String? fawryReferenceNumber) async {
     final cart = Provider.of<CartProvider>(context, listen: false);
 
@@ -478,7 +551,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                   const SizedBox(height: 24),
                   
-                  // Pay with Fawry Button
+                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isProcessing ? null : () => _processApplePay(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          disabledBackgroundColor: Colors.grey,
+                        ),
+                        child: const Text(
+                          'Pay with Apple Pay',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  // Pay with Fawry Button (no loading spinner - Fawry SDK has its own UI)
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -489,22 +584,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         disabledBackgroundColor: Colors.grey,
                       ),
-                      child: _isProcessing
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Text(
-                              'Pay with Fawry',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                      child: const Text(
+                        'Pay with Fawry',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
                 ],

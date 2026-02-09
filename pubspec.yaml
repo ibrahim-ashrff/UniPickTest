@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+3
+version: 1.0.0+13
 
 environment:
   sdk: ^3.10.7
@@ -57,6 +57,7 @@ dependencies:
   
   # Google Sign-In
   google_sign_in: ^6.2.1
+  sign_in_with_apple: ^6.1.2
   change_app_package_name: ^1.5.0
   
   # URL Launcher for email
@@ -75,6 +76,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.3
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -124,3 +128,18 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Generate app icons from Logonew (iOS App Store + Android)
+flutter_launcher_icons:
+  image_path: "Logonew.png"
+  ios: true
+  android: true
+  remove_alpha_ios: true  # App Store requires icons without transparency
+
+# Launch/splash screen with Logonew
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: "Logonew.png"
+  android_12:
+    color: "#FFFFFF"
+    image: "Logonew.png"

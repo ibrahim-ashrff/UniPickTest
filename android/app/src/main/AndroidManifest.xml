@@ -4,8 +4,8 @@
     <supports-screens
         android:smallScreens="true"
         android:normalScreens="true"
-        android:largeScreens="false"
-        android:xlargeScreens="false" />
+        android:largeScreens="true"
+        android:xlargeScreens="true" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -17,7 +17,7 @@
         android:label="UniPick"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:resizeableActivity="false"
+        android:resizeableActivity="true"
         android:usesCleartextTraffic="true"
         android:allowBackup="false"
         tools:replace="android:allowBackup, android:label">

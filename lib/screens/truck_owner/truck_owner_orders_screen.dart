@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../utils/app_colors.dart';
+import '../../services/web_order_sound_stub.dart'
+    if (dart.library.html) '../../services/web_order_sound_web.dart' as web_order_sound;
 
 /// Orders Management Screen for Truck Owners
 /// Shows all orders for their food truck
@@ -16,11 +19,35 @@ class TruckOwnerOrdersScreen extends StatefulWidget {
 
 class _TruckOwnerOrdersScreenState extends State<TruckOwnerOrdersScreen> {
   String _selectedStatus = 'all';
+  final Set<String> _knownPaidOrderIds = {};
+  bool _initialLoadDone = false;
+
+  void _checkAndPlayNewPaidOrderSound(List<QueryDocumentSnapshot> allOrders) {
+    final paidOrderIds = <String>{};
+    for (final doc in allOrders) {
+      final data = doc.data() as Map<String, dynamic>;
+      final status = (data['status'] as String? ?? '').toLowerCase();
+      if (status == 'paid') {
+        paidOrderIds.add(doc.id);
+      }
+    }
+    if (!_initialLoadDone) {
+      _knownPaidOrderIds.addAll(paidOrderIds);
+      _initialLoadDone = true;
+      return;
+    }
+    final newPaidIds = paidOrderIds.difference(_knownPaidOrderIds);
+    if (newPaidIds.isNotEmpty) {
+      web_order_sound.playNewPaidOrderSound();
+      _knownPaidOrderIds.addAll(newPaidIds);
+    }
+  }
 
   int _getOrderCountByStatus(List<QueryDocumentSnapshot> orders, String status) {
     return orders.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
-      final orderStatus = (data['status'] as String? ?? '').toLowerCase();
+      String orderStatus = (data['status'] as String? ?? '').toLowerCase();
+      if (orderStatus == 'unpaid') orderStatus = 'pending'; // Unpaid = pending
       return orderStatus == status.toLowerCase() && orderStatus != 'failed';
     }).length;
   }
@@ -55,38 +82,76 @@ class _TruckOwnerOrdersScreenState extends State<TruckOwnerOrdersScreen> {
 
           final allOrders = snapshot.data?.docs ?? [];
           
-          // First, exclude failed orders
-          final ordersWithoutFailed = allOrders.where((doc) {
+          // Web only: play sound when a new paid order appears
+          if (kIsWeb) {
+            _checkAndPlayNewPaidOrderSound(allOrders);
+          }
+          
+          // Truck owners only see paid/preparing/ready/completed - NOT pending/unpaid (customer-only until paid)
+          final ordersVisibleToOwner = allOrders.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
             final status = (data['status'] as String? ?? '').toLowerCase();
-            return status != 'failed';
+            if (status == 'failed') return false;
+            if (status == 'pending' || status == 'unpaid') return false;
+            return true;
           }).toList();
 
-          final paidCount = _getOrderCountByStatus(ordersWithoutFailed, 'paid');
-          final preparingCount = _getOrderCountByStatus(ordersWithoutFailed, 'preparing');
-          final readyCount = _getOrderCountByStatus(ordersWithoutFailed, 'ready');
+          final paidCount = _getOrderCountByStatus(ordersVisibleToOwner, 'paid');
+          final preparingCount = _getOrderCountByStatus(ordersVisibleToOwner, 'preparing');
+          final readyCount = _getOrderCountByStatus(ordersVisibleToOwner, 'ready');
 
-          // Filter by status and sort by createdAt
-          List<QueryDocumentSnapshot> filteredOrders = _selectedStatus == 'all'
-              ? ordersWithoutFailed
-              : ordersWithoutFailed.where((doc) {
+          final effectiveFilter = (_selectedStatus == 'pending') ? 'all' : _selectedStatus;
+          List<QueryDocumentSnapshot> filteredOrders = effectiveFilter == 'all'
+              ? ordersVisibleToOwner
+              : ordersVisibleToOwner.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  return (data['status'] as String? ?? '').toLowerCase() == 
-                         _selectedStatus.toLowerCase();
+                  final docStatus = (data['status'] as String? ?? '').toLowerCase();
+                  return docStatus == effectiveFilter.toLowerCase();
                 }).toList();
           
-          // Sort by createdAt (descending - newest first)
+          // Sort: All tabs use ascending (oldest first, new orders at bottom).
+          // Truck owner only sees paid/preparing/ready/completed (no pending).
           filteredOrders.sort((a, b) {
             final aData = a.data() as Map<String, dynamic>;
             final bData = b.data() as Map<String, dynamic>;
-            final aTime = aData['createdAt'] as Timestamp?;
-            final bTime = bData['createdAt'] as Timestamp?;
-            
-            if (aTime == null && bTime == null) return 0;
-            if (aTime == null) return 1;
-            if (bTime == null) return -1;
-            
-            return bTime.compareTo(aTime); // Descending order
+            String aStatus = (aData['status'] as String? ?? '').toLowerCase();
+            String bStatus = (bData['status'] as String? ?? '').toLowerCase();
+
+            final statusOrder = {'paid': 0, 'preparing': 1, 'ready': 2, 'completed': 3};
+            final aPriority = statusOrder[aStatus] ?? 5;
+            final bPriority = statusOrder[bStatus] ?? 5;
+            if (aPriority != bPriority) return aPriority.compareTo(bPriority);
+
+            final createdAt = (ts) => (ts as Timestamp?)?.toDate();
+            final aCreated = createdAt(aData['createdAt']) ?? DateTime.now();
+            final bCreated = createdAt(bData['createdAt']) ?? DateTime.now();
+
+            Timestamp? aTs;
+            Timestamp? bTs;
+            switch (aStatus) {
+              case 'paid':
+                aTs = aData['paidAt'] as Timestamp?;
+                bTs = bData['paidAt'] as Timestamp?;
+                break;
+              case 'preparing':
+                aTs = aData['preparingAt'] as Timestamp?;
+                bTs = bData['preparingAt'] as Timestamp?;
+                break;
+              case 'ready':
+                aTs = aData['readyAt'] as Timestamp?;
+                bTs = bData['readyAt'] as Timestamp?;
+                break;
+              case 'completed':
+                aTs = aData['completedAt'] as Timestamp?;
+                bTs = bData['completedAt'] as Timestamp?;
+                break;
+              default:
+                aTs = aData['createdAt'] as Timestamp?;
+                bTs = bData['createdAt'] as Timestamp?;
+            }
+            final aTime = aTs?.toDate() ?? aCreated;
+            final bTime = bTs?.toDate() ?? bCreated;
+            return aTime.compareTo(bTime);
           });
 
           return Column(
@@ -251,7 +316,9 @@ class _TruckOwnerOrdersScreenState extends State<TruckOwnerOrdersScreen> {
   Widget _buildOrderCard(String orderId, Map<String, dynamic> data) {
     final items = data['items'] as List<dynamic>? ?? [];
     final total = (data['total'] ?? 0.0).toDouble();
-    final status = data['status'] ?? 'pending';
+    // Normalize: unpaid -> pending (never show unpaid as failed)
+    String status = ((data['status'] ?? 'pending') as String).toLowerCase();
+    if (status == 'unpaid') status = 'pending';
     final createdAt = data['createdAt'] as Timestamp?;
     final customerName = data['customerName'] ?? 'Customer';
     final notes = data['notes'] as String?;
@@ -457,10 +524,22 @@ class _TruckOwnerOrdersScreenState extends State<TruckOwnerOrdersScreen> {
 
   Future<void> _updateOrderStatus(String orderId, String newStatus) async {
     try {
+      final updates = <String, dynamic>{'status': newStatus};
+      switch (newStatus) {
+        case 'preparing':
+          updates['preparingAt'] = FieldValue.serverTimestamp();
+          break;
+        case 'ready':
+          updates['readyAt'] = FieldValue.serverTimestamp();
+          break;
+        case 'completed':
+          updates['completedAt'] = FieldValue.serverTimestamp();
+          break;
+      }
       await FirebaseFirestore.instance
           .collection('orders')
           .doc(orderId)
-          .update({'status': newStatus});
+          .update(updates);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

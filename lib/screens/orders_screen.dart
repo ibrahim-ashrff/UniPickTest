@@ -24,7 +24,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
       case 'paid':
         return 'green';
       case 'pending':
-        return 'burgundy';
+      case 'unpaid':
+        return 'burgundy'; // Awaiting payment
       case 'preparing':
         return 'blue';
       case 'ready':
@@ -43,7 +44,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
       case 'paid':
         return Icons.check_circle;
       case 'pending':
-        return Icons.pending;
+      case 'unpaid':
+        return Icons.pending; // Awaiting payment
       case 'preparing':
         return Icons.restaurant;
       case 'ready':

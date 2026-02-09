@@ -33,6 +33,12 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.unipick.app"
@@ -67,6 +73,9 @@ android {
             }
             isMinifyEnabled = false
             isShrinkResources = false
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
         }
     }
 }

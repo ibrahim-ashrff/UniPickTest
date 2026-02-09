@@ -64,7 +64,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '479405296471',
     projectId: 'unipick-1b5ed',
     storageBucket: 'unipick-1b5ed.firebasestorage.app',
-    iosBundleId: 'com.example.testApp2',
+    iosBundleId: 'com.ibrahimashraf.unipick2',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -73,7 +73,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '479405296471',
     projectId: 'unipick-1b5ed',
     storageBucket: 'unipick-1b5ed.firebasestorage.app',
-    iosBundleId: 'com.example.testApp2',
+    iosBundleId: 'com.ibrahimashraf.unipick2',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

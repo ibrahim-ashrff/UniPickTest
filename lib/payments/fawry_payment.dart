@@ -5,6 +5,7 @@ import 'package:fawry_sdk/fawry_sdk.dart';
 import 'package:fawry_sdk/fawry_utils.dart';
 import 'package:fawry_sdk/model/bill_item.dart';
 import 'package:fawry_sdk/model/fawry_launch_model.dart';
+import 'package:fawry_sdk/model/launch_apple_pay_model.dart';
 import 'package:fawry_sdk/model/launch_customer_model.dart';
 import 'package:fawry_sdk/model/launch_merchant_model.dart';
 import 'package:fawry_sdk/model/payment_methods.dart';
@@ -65,6 +66,8 @@ class FawryPayment {
     String description = "UNIPICK Order",
     bool allow3D = true,
     PaymentMethods paymentMethods = PaymentMethods.ALL,
+    bool enableApplePay = false,
+    String? applePayMerchantId,
   }) async {
     final merchantRefNum = FawryUtils.randomAlphaNumeric(10);
 
@@ -99,6 +102,14 @@ class FawryPayment {
       secureKey: secureHashKey, // Pass the Security Key / Hash code from Fawry email
     );
 
+    LaunchApplePayModel? applePayModel;
+    if (enableApplePay) {
+      if (applePayMerchantId == null || applePayMerchantId.isEmpty) {
+        throw Exception('Apple Pay merchant ID is required when Apple Pay is enabled');
+      }
+      applePayModel = LaunchApplePayModel(merchantID: applePayMerchantId);
+    }
+
     final model = FawryLaunchModel(
       allow3DPayment: allow3D,
       chargeItems: chargeItems,
@@ -108,6 +119,7 @@ class FawryPayment {
       skipReceipt: true,
       payWithCardToken: true, // Enable card tokenization to show "remember this card" option
       paymentMethods: paymentMethods,
+      launchApplePayModel: applePayModel,
       // No need for paymentSignature or tokenizationSignature when secureKey is provided
     );
 
