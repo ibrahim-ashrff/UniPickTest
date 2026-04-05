@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../utils/app_colors.dart';
@@ -44,6 +45,8 @@ class TruckOwnerProfileScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     _buildInfoRow('Truck Name', truckName ?? 'Not assigned'),
                     _buildInfoRow('Truck ID', truckId ?? 'Not assigned'),
+                    const SizedBox(height: 16),
+                    if (truckId != null) _OpenClosedSwitch(truckId: truckId!),
                   ],
                 ),
               ),
@@ -172,4 +175,66 @@ class TruckOwnerProfileScreen extends StatelessWidget {
   }
 }
 
+/// Switch for truck owner to toggle open/closed status
+class _OpenClosedSwitch extends StatelessWidget {
+  final String truckId;
 
+  const _OpenClosedSwitch({required this.truckId});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('food_trucks')
+          .doc(truckId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final isOpen = (snapshot.data?.data() as Map<String, dynamic>?)?['isOpen'] ?? true;
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Truck Status',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            Row(
+              children: [
+                Text(
+                  isOpen ? 'Open' : 'Closed',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: isOpen ? Colors.green : Colors.red,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Switch(
+                  value: isOpen,
+                  onChanged: (value) async {
+                    try {
+                      await FirebaseFirestore.instance
+                          .collection('food_trucks')
+                          .doc(truckId)
+                          .set({'isOpen': value}, SetOptions(merge: true));
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                        );
+                      }
+                    }
+                  },
+                  activeColor: AppColors.burgundy,
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+}

@@ -1,8 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/menu_item.dart';
 import '../data/mock_menu.dart';
 import '../state/cart_provider.dart';
+import '../widgets/item_thumbnail.dart';
 import 'cart_screen.dart';
 
 class MenuScreen extends StatelessWidget {
@@ -24,7 +26,7 @@ class MenuScreen extends StatelessWidget {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const CartScreen()),
+                    CupertinoPageRoute(builder: (_) => const CartScreen()),
                   );
                 },
               ),
@@ -66,6 +68,10 @@ class MenuScreen extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 12),
             child: ListTile(
               contentPadding: const EdgeInsets.all(12),
+              leading: ItemThumbnail(
+                imageUrl: item.imageUrl,
+                size: 56,
+              ),
               title: Text(
                 item.name,
                 style: const TextStyle(
@@ -131,7 +137,7 @@ class MenuScreen extends StatelessWidget {
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const CartScreen()),
+                      CupertinoPageRoute(builder: (_) => const CartScreen()),
                     );
                   },
                   child: Row(

@@ -20,8 +20,8 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.unipick.app"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    compileSdk = 36  // Required by dependencies; 16 KB page size support (Google Play)
+    ndkVersion = "27.0.12077973"  // Required for 16 KB page size support (Google Play)
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -44,10 +44,13 @@ android {
         applicationId = "com.unipick.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 24  // Flutter 3.35+ and 16 KB require minSdk 24+
+        targetSdk = 35  // Required for 16 KB page size support (Google Play)
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     signingConfigs {

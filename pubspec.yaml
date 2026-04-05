@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+13
+version: 1.0.0+29
 
 environment:
   sdk: ^3.10.7
@@ -42,8 +42,8 @@ dependencies:
   # State Management
   provider: ^6.1.1
 
-  # Fawry SDK
-  fawry_sdk: ^2.0.18
+
+  fawry_sdk: ^2.0.12
   
   # Crypto for SHA-256 signature
   crypto: ^3.0.3
@@ -68,7 +68,6 @@ dependencies:
   
   # Notifications
   flutter_local_notifications: ^18.0.1
-
   
 
 
@@ -102,6 +101,8 @@ flutter:
   assets:
     - LOGOUNI-removebg-preview.png
     - image-removebg-preview.png
+    - giu-logo.png
+    - giu logo.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -129,17 +130,18 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
-# Generate app icons from Logonew (iOS App Store + Android)
+# Generate app icons - logomongo.jpeg for iOS
 flutter_launcher_icons:
-  image_path: "Logonew.png"
+  image_path: "logomongo.jpeg"
+  image_path_ios: "logomongo.jpeg"
   ios: true
   android: true
   remove_alpha_ios: true  # App Store requires icons without transparency
 
-# Launch/splash screen with Logonew
+# Launch/splash screen with LOGOUNI (larger 2x version for bigger logo)
 flutter_native_splash:
   color: "#FFFFFF"
-  image: "Logonew.png"
+  image: "LOGOUNI-splash-large.png"
   android_12:
     color: "#FFFFFF"
-    image: "Logonew.png"
+    image: "LOGOUNI-splash-large.png"

@@ -20,6 +20,7 @@ class TruckOwnerDashboard extends StatefulWidget {
 
 class _TruckOwnerDashboardState extends State<TruckOwnerDashboard> {
   int _currentIndex = 0;
+  late PageController _pageController;
   String? _truckId;
   String? _truckName;
   bool _loading = true;
@@ -27,7 +28,14 @@ class _TruckOwnerDashboardState extends State<TruckOwnerDashboard> {
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(initialPage: 0);
     _loadTruckInfo();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadTruckInfo() async {
@@ -102,8 +110,10 @@ class _TruckOwnerDashboardState extends State<TruckOwnerDashboard> {
         backgroundColor: AppColors.burgundy,
         foregroundColor: Colors.white,
       ),
-      body: IndexedStack(
-        index: _currentIndex,
+      body: PageView(
+        controller: _pageController,
+        physics: const BouncingScrollPhysics(),
+        onPageChanged: (index) => setState(() => _currentIndex = index),
         children: _screens,
       ),
       bottomNavigationBar: Container(
@@ -120,9 +130,11 @@ class _TruckOwnerDashboardState extends State<TruckOwnerDashboard> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
+            _pageController.animateToPage(
+              index,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
           },
           type: BottomNavigationBarType.fixed,
           backgroundColor: AppColors.background,

@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 /// Custom page route with smooth slide and fade animations
@@ -144,16 +145,13 @@ enum SlideDirection {
 
 /// Helper extension to easily navigate with animations
 extension NavigationExtension on BuildContext {
-  /// Navigate with slide animation
+  /// Navigate with slide animation and swipe-back gesture
   Future<T?> slideTo<T>(
     Widget page, {
     SlideDirection direction = SlideDirection.right,
   }) {
     return Navigator.of(this).push<T>(
-      SlidePageRoute(
-        child: page,
-        direction: direction,
-      ),
+      CupertinoPageRoute(builder: (_) => page),
     );
   }
 

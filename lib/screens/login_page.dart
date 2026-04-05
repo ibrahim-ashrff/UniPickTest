@@ -2,12 +2,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:io' show Platform;
+import 'package:provider/provider.dart';
 import '../utils/app_colors.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/bottom_wave.dart';
 import '../services/auth_service.dart';
+import '../state/guest_provider.dart';
 import 'email_password_login_screen.dart';
 import 'main_navigation.dart';
+import 'post_login_gate.dart';
 
 /// Main login screen with logo and sign-in method selection
 class LoginPage extends StatefulWidget {
@@ -40,7 +43,7 @@ class _LoginPageState extends State<LoginPage> {
     final waveHeight = 100.0; // Height of the wave part
     
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(
         children: [
           // Wave with gradient at the boundary (sits on top)
@@ -138,9 +141,8 @@ class _LoginPageState extends State<LoginPage> {
                               final userCredential = await authService.signInWithGoogle();
                               
                               if (userCredential != null && context.mounted) {
-                                // Navigate to main navigation after successful sign-in
                                 context.slideReplacementAll(
-                                  const MainNavigation(),
+                                  const PostLoginGate(),
                                   direction: SlideDirection.left,
                                 );
                               }
@@ -178,7 +180,7 @@ class _LoginPageState extends State<LoginPage> {
 
                               if (userCredential != null && context.mounted) {
                                 context.slideReplacementAll(
-                                  const MainNavigation(),
+                                  const PostLoginGate(),
                                   direction: SlideDirection.left,
                                 );
                               }
@@ -208,6 +210,28 @@ class _LoginPageState extends State<LoginPage> {
                           );
                         },
                       ),
+                      if (!_isTruckOwner) ...[
+                        const SizedBox(height: 20),
+                        GestureDetector(
+                          onTap: () {
+                            Provider.of<GuestProvider>(context, listen: false).setGuest(true);
+                            context.slideReplacementAll(
+                              const MainNavigation(initialIndex: 0, isGuest: true),
+                              direction: SlideDirection.left,
+                            );
+                          },
+                          child: Text(
+                            'Continue as a Guest',
+                            style: GoogleFonts.inter(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey[600],
+                              decoration: TextDecoration.underline,
+                              decorationColor: Colors.grey[600],
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/cart_item.dart';
 import '../state/cart_provider.dart';
+import 'item_thumbnail.dart';
 
 class CartItemTile extends StatelessWidget {
   final CartItem cartItem;
@@ -19,6 +20,10 @@ class CartItemTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
         contentPadding: const EdgeInsets.all(12),
+        leading: ItemThumbnail(
+          imageUrl: cartItem.menuItem.imageUrl,
+          size: 56,
+        ),
         title: Text(
           cartItem.menuItem.name,
           style: const TextStyle(

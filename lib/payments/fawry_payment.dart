@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
+
 import 'package:crypto/crypto.dart';
 import 'package:fawry_sdk/fawry_sdk.dart';
 import 'package:fawry_sdk/fawry_utils.dart';
 import 'package:fawry_sdk/model/bill_item.dart';
 import 'package:fawry_sdk/model/fawry_launch_model.dart';
 import 'package:fawry_sdk/model/launch_apple_pay_model.dart';
+import 'package:fawry_sdk/model/launch_checkout_model.dart';
 import 'package:fawry_sdk/model/launch_customer_model.dart';
 import 'package:fawry_sdk/model/launch_merchant_model.dart';
 import 'package:fawry_sdk/model/payment_methods.dart';
@@ -15,6 +18,15 @@ import 'package:flutter/material.dart';
 class FawryPayment {
   // Store subscriptions per context to allow multiple listeners
   static final Map<BuildContext, StreamSubscription> _subscriptions = {};
+
+  /// Set to true before opening Fawry UI so app can redirect back to checkout on resume (e.g. user pressed back).
+  static bool isAwaitingReturnFromFawry = false;
+  static void setAwaitingReturnFromFawry(bool value) {
+    isAwaitingReturnFromFawry = value;
+  }
+  static void clearAwaitingReturnFromFawry() {
+    isAwaitingReturnFromFawry = false;
+  }
 
   static void listen(
     BuildContext context, {
@@ -55,9 +67,17 @@ class FawryPayment {
     _subscriptions.remove(context);
   }
 
+  /// Fawry expects merchant ref as alphanumeric (guide). Underscores/long UID-based refs can fail card auth while Pay-at-Fawry still works.
+  static String generateMerchantRefNum() {
+    final ts = DateTime.now().millisecondsSinceEpoch.toString();
+    final tail = ts.length > 10 ? ts.substring(ts.length - 10) : ts;
+    return '${FawryUtils.randomAlphaNumeric(8)}$tail';
+  }
+
   static Future<String> pay({
     required String merchantCode,
     required String secureHashKey, // NOTE: using hash key from email
+    required String merchantRefNum, // Use [generateMerchantRefNum] — alphanumeric only
     required String customerProfileId,
     required String customerName,
     required String customerEmail,
@@ -66,25 +86,28 @@ class FawryPayment {
     String description = "UNIPICK Order",
     bool allow3D = true,
     PaymentMethods paymentMethods = PaymentMethods.ALL,
+    /// Required for saved cards / tokenized checkout. Must match deep link scheme (iOS Info.plist + Android intent-filter).
+    bool payWithCardToken = true,
     bool enableApplePay = false,
     String? applePayMerchantId,
   }) async {
-    final merchantRefNum = FawryUtils.randomAlphaNumeric(10);
 
     debugPrint("FAWRY merchantCode=$merchantCode");
     debugPrint("FAWRY merchantRefNum=$merchantRefNum");
     debugPrint("FAWRY customerProfileId=$customerProfileId");
     debugPrint("FAWRY customerMobile=$customerMobile");
-    debugPrint("FAWRY amount=$amountEgp");
+    final amountRounded = double.parse(amountEgp.toStringAsFixed(2));
+    debugPrint("FAWRY amount=$amountRounded");
     debugPrint("FAWRY baseUrl='https://atfawry.fawrystaging.com/'");
     debugPrint("FAWRY secureHashKey=$secureHashKey");
+    debugPrint("FAWRY payWithCardToken=$payWithCardToken");
 
     final chargeItems = <BillItem>[
       BillItem(
         itemId: "Item1",
         description: description,
         quantity: 1,
-        price: amountEgp,
+        price: amountRounded,
       ),
     ];
 
@@ -95,11 +118,11 @@ class FawryPayment {
       customerMobile: customerMobile,
     );
 
-    // Pass secureKey directly to LaunchMerchantModel (this is the merchantSecretKey)
+    // LaunchMerchantModel: merchantCode, merchantRefNum, secretKey/secureKey per Fawry guide
     final merchantModel = LaunchMerchantModel(
       merchantCode: merchantCode,
       merchantRefNum: merchantRefNum,
-      secureKey: secureHashKey, // Pass the Security Key / Hash code from Fawry email
+      secureKey: secureHashKey, // Security Key / Hash from Fawry (guide: "provided by support")
     );
 
     LaunchApplePayModel? applePayModel;
@@ -110,6 +133,13 @@ class FawryPayment {
       applePayModel = LaunchApplePayModel(merchantID: applePayMerchantId);
     }
 
+    // LaunchCheckoutModel(scheme) enables redirect back to app; Info.plist must have CFBundleURLSchemes = unipick.
+    final isIOS = Platform.isIOS;
+    LaunchCheckoutModel? checkoutModel;
+    if (isIOS) {
+      checkoutModel = LaunchCheckoutModel(scheme: 'unipick');
+    }
+
     final model = FawryLaunchModel(
       allow3DPayment: allow3D,
       chargeItems: chargeItems,
@@ -117,9 +147,10 @@ class FawryPayment {
       launchMerchantModel: merchantModel,
       skipLogin: true,
       skipReceipt: true,
-      payWithCardToken: true, // Enable card tokenization to show "remember this card" option
+      payWithCardToken: payWithCardToken,
       paymentMethods: paymentMethods,
       launchApplePayModel: applePayModel,
+      launchCheckOutModel: checkoutModel,
       // No need for paymentSignature or tokenizationSignature when secureKey is provided
     );
 

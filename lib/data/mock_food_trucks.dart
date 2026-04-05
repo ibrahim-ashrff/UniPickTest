@@ -16,7 +16,7 @@ final List<FoodTruck> mockFoodTrucks = [
     name: 'Taco Fiesta',
     cuisine: 'Mexican',
     rating: 4.8,
-    imageUrl: 'https://images.unsplash.com/photo-1565299585323-38174c0b0a71?w=400',
+    imageUrl: 'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=400',
     description: 'Authentic Mexican street tacos',
     isOpen: true,
   ),

@@ -1,11 +1,13 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
 import '../utils/page_transitions.dart';
-import 'main_navigation.dart';
+import 'post_login_gate.dart';
 import 'signup_screen.dart';
+import 'verify_account_screen.dart';
 
 /// Email and password login screen
 /// Shows form fields for email and password authentication
@@ -19,11 +21,22 @@ class EmailPasswordLoginScreen extends StatefulWidget {
 class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final emailFocusNode = FocusNode();
+  final passwordFocusNode = FocusNode();
   bool loading = false;
   String? loginError;
 
   @override
+  void initState() {
+    super.initState();
+    emailFocusNode.addListener(() => setState(() {}));
+    passwordFocusNode.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
+    emailFocusNode.dispose();
+    passwordFocusNode.dispose();
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
@@ -36,16 +49,36 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
     });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text,
       );
 
       if (!mounted) return;
 
-      // Navigate to main navigation after successful login
+      final user = cred.user;
+      if (user != null && !user.emailVerified) {
+        // Check if truck owner or skip verification - bypass for them
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        final role = userDoc.data()?['role'] as String?;
+        final skipVerification = userDoc.data()?['skipEmailVerification'] == true;
+        if (role == 'truck owner' || skipVerification) {
+          // Bypass verification, go to app
+        } else {
+          context.slideReplacementAll(
+            VerifyAccountScreen(email: user.email ?? ''),
+            direction: SlideDirection.left,
+          );
+          return;
+        }
+      }
+
+      // Navigate to PostLoginGate (terms check) then MainNavigation
       context.slideReplacementAll(
-        const MainNavigation(),
+        const PostLoginGate(),
         direction: SlideDirection.left,
       );
     } on FirebaseAuthException catch (e) {
@@ -79,6 +112,7 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
         title: const Text('Email & Password'),
         backgroundColor: AppColors.burgundy,
         foregroundColor: Colors.white,
+        automaticallyImplyLeading: false,
       ),
       body: Container(
         color: AppColors.burgundy,
@@ -119,9 +153,10 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                 const SizedBox(height: 20),
                 TextField(
                   controller: emailController,
+                  focusNode: emailFocusNode,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
-                    hintText: "Email",
+                    hintText: (emailFocusNode.hasFocus || emailController.text.isNotEmpty) ? null : "Email",
                     hintStyle: TextStyle(color: Colors.grey[600], fontSize: 14),
                     filled: true,
                     fillColor: Colors.white,
@@ -144,17 +179,18 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                     fontSize: 14,
                   ),
                   onChanged: (_) {
-                    if (loginError != null) {
-                      setState(() => loginError = null);
-                    }
+                    setState(() {
+                      if (loginError != null) loginError = null;
+                    });
                   },
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: passwordController,
+                  focusNode: passwordFocusNode,
                   obscureText: true,
                   decoration: InputDecoration(
-                    hintText: "Password",
+                    hintText: (passwordFocusNode.hasFocus || passwordController.text.isNotEmpty) ? null : "Password",
                     hintStyle: TextStyle(color: Colors.grey[600], fontSize: 14),
                     filled: true,
                     fillColor: Colors.white,
@@ -177,9 +213,9 @@ class _EmailPasswordLoginScreenState extends State<EmailPasswordLoginScreen> {
                     fontSize: 14,
                   ),
                   onChanged: (_) {
-                    if (loginError != null) {
-                      setState(() => loginError = null);
-                    }
+                    setState(() {
+                      if (loginError != null) loginError = null;
+                    });
                   },
                 ),
                 if (loginError != null)

@@ -55,15 +55,15 @@ service cloud.firestore {
       allow read, write: if request.auth != null; // Only authenticated users can update counters
     }
     
-    // Food trucks collection (if you need to store trucks in Firestore later)
+    // Food trucks collection - public read so guests can browse; only owners can write
     match /food_trucks/{truckId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow write: if request.auth != null && isTruckOwner() && truckId == getTruckOwnerId();
     }
     
-    // Menu items subcollection (for truck owners to manage their menu)
+    // Menu items subcollection - public read so guests can view menus; only owners can write
     match /food_trucks/{truckId}/menu_items/{itemId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow write: if request.auth != null && isTruckOwner() && truckId == getTruckOwnerId();
     }
   }

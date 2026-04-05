@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:fawry_sdk/fawry_sdk.dart';
-import 'package:fawry_sdk/model/response.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -17,11 +16,10 @@ import '../utils/app_colors.dart';
 import '../utils/order_number_generator.dart';
 import 'package:provider/provider.dart';
 
-/// Screen that displays payment status and reference number
-/// Shows the reference number immediately after payment initiation
-/// Updates status when payment is confirmed via Fawry callback
+/// Screen that displays payment status (Pending / Paid / Failed).
+/// Updates status when payment is confirmed via Fawry callback.
 class PaymentStatusScreen extends StatefulWidget {
-  final String referenceNumber; // Fawry reference number (for display)
+  final String referenceNumber; // Fawry reference for Pay at Fawry / tracking; shown when valid
   final double amount;
   final String merchantRefNum; // Merchant reference number (for status API calls)
   final String? notes; // Order notes from checkout
@@ -31,9 +29,9 @@ class PaymentStatusScreen extends StatefulWidget {
     super.key,
     required this.referenceNumber,
     required this.amount,
-    required this.merchantRefNum, // Make it required - we need this for status checks
+    required this.merchantRefNum,
     this.notes,
-    this.initialStatus, // Optional initial status
+    this.initialStatus,
   });
 
   @override
@@ -49,7 +47,6 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
   bool _orderHandled = false; // Flag to prevent duplicate order creation
   bool _failedOrderHandled = false; // Flag to prevent duplicate failed order creation
   bool _expiredOrderHandled = false; // Flag to prevent duplicate expired order creation
-  StreamSubscription? _paymentStreamSubscription;
   Timer? _pollingTimer;
   bool _isPolling = false;
   
@@ -101,13 +98,12 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
       }
     }
     
-    _startListening();
-    _startPolling(); // Start polling for payment status
+    // Only checkout listens to Fawry stream; this screen relies on polling + initialStatus to avoid duplicate listeners
+    _startPolling();
   }
 
   @override
   void dispose() {
-    _paymentStreamSubscription?.cancel();
     _pollingTimer?.cancel();
     super.dispose();
   }
@@ -183,14 +179,13 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
             orderStatusStr == '200') {
           debugPrint("✅✅✅ PAYMENT CONFIRMED - Status is PAID! ✅✅✅");
           _pollingTimer?.cancel();
-          if (mounted && !_orderHandled) {
+          if (mounted) {
             setState(() {
               _status = 'Paid';
               _isPaid = true;
               _statusMessage = statusDescription.isNotEmpty ? statusDescription : 'Payment confirmed!';
-              _orderHandled = true; // Mark as handled to prevent duplicates
             });
-            _completeOrder();
+            _completeOrder(); // Gate inside _completeOrder prevents duplicate runs
           }
         } else if (orderStatusStr == 'FAILED' || 
                    orderStatusStr == 'CANCELLED' ||
@@ -250,105 +245,18 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
     }
   }
 
-  void _startListening() {
-    // Listen directly to FawrySDK stream to avoid conflicts with FawryPayment.listen
-    _paymentStreamSubscription = FawrySDK.instance.callbackResultStream().listen(
-      (event) {
-        if (!mounted) return;
-
-        debugPrint("PaymentStatusScreen: RAW EVENT - $event");
-
-        try {
-          final response = ResponseStatus.fromJson(jsonDecode(event));
-          
-          debugPrint("PaymentStatusScreen: Received callback - ${response.status}");
-          debugPrint("PaymentStatusScreen: Message - ${response.message ?? ''}");
-          debugPrint("PaymentStatusScreen: Error - ${response.error ?? ''}");
-
-          final status = (response.status ?? "").toUpperCase();
-          final message = response.message ?? '';
-          final error = response.error ?? '';
-
-          // Parse orderStatus from data - 102 with UNPAID = awaiting payment, NOT failed
-          String? orderStatusFromData;
-          if (response.data != null) {
-            try {
-              final dataJson = jsonDecode(response.data!);
-              if (dataJson is Map) {
-                orderStatusFromData = (dataJson['orderStatus'] ?? '').toString().toUpperCase();
-              }
-            } catch (_) {}
-          }
-
-          debugPrint("PaymentStatusScreen: Status=$status, orderStatus=$orderStatusFromData");
-
-          setState(() {
-            _statusMessage = message.isNotEmpty ? message : (error.isNotEmpty && status != "PAID" && status != "SUCCESS" ? error : '');
-            
-            // Check for PAID/SUCCESS first - prioritize success
-            if (status == "PAID" || status == "SUCCESS" || status == "200" || orderStatusFromData == 'PAID') {
-              _status = 'Paid';
-              _isPaid = true;
-              debugPrint("✅ Payment successful detected - Status: $status");
-            } else if (status == "101" || 
-                      status == "FAILED" || 
-                      status == "CANCELLED" ||
-                      orderStatusFromData == 'FAILED') {
-              // 102 with UNPAID = pending (user got ref number, awaiting payment at Fawry)
-              _status = 'Failed';
-              _isFailed = true;
-              debugPrint("❌ Payment failed detected - Status: $status");
-            } else if (status == "102" && (orderStatusFromData == 'UNPAID' || orderStatusFromData == 'PENDING' || orderStatusFromData == '')) {
-              // 102 + UNPAID = pending - user completed flow, awaiting payment
-              _status = 'Pending';
-              debugPrint("⏳ Payment pending - Status: 102, orderStatus: $orderStatusFromData");
-            } else if (status == "EXPIRED" || status == "TIMEOUT" || status == "EXPIRY") {
-              _status = 'Expired';
-              _isExpired = true;
-            } else if (status == "PENDING" || status == "102" || status == "") {
-              _status = 'Pending';
-            } else {
-              _status = status;
-            }
-          });
-
-          // Handle different statuses (only if not already handled)
-          if (_isPaid && !_orderHandled && !_failedOrderHandled && !_expiredOrderHandled) {
-            _orderHandled = true; // Mark as handled to prevent duplicates
-            _completeOrder();
-          } else if (_isFailed && !_failedOrderHandled && !_orderHandled) {
-            debugPrint("🔄 Calling _handleFailedOrder() from callback listener");
-            _handleFailedOrder();
-          } else if (_isExpired && !_expiredOrderHandled && !_orderHandled) {
-            _handleExpiredOrder();
-          } else if (_orderHandled || _failedOrderHandled || _expiredOrderHandled) {
-            debugPrint("⚠️ Order already handled, skipping duplicate processing");
-          }
-        } catch (e) {
-          debugPrint("PaymentStatusScreen: Parse error - $e");
-          if (!mounted) return;
-          setState(() {
-            _status = 'Error';
-            _statusMessage = 'Payment error: $e';
-          });
-        }
-      },
-      onError: (e) {
-        if (!mounted) return;
-        debugPrint("PaymentStatusScreen: Stream error - $e");
-        setState(() {
-          _status = 'Error';
-          _statusMessage = 'Payment error: $e';
-        });
-      },
-    );
-  }
-
   void _completeOrder() async {
+    // Single gate: only one code path can run order creation (prevents race with polling/callbacks)
+    if (_orderHandled) {
+      debugPrint("⚠️ _completeOrder already handled, skipping duplicate");
+      return;
+    }
+    _orderHandled = true;
+
     final cart = Provider.of<CartProvider>(context, listen: false);
     final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
     final user = FirebaseAuth.instance.currentUser;
-    
+
     if (user == null) {
       debugPrint("❌ Cannot complete order - user not logged in");
       if (mounted) {
@@ -429,15 +337,6 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (context) => const MainNavigation(initialIndex: 1)),
       (route) => false,
-    );
-
-    // Show success snackbar
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Payment confirmed! ✅\nRef: ${widget.referenceNumber}'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
     );
   }
 
@@ -531,6 +430,21 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
     }
   }
 
+  bool get _showFawryReferenceCard {
+    final r = widget.referenceNumber.trim();
+    if (r.isEmpty) return false;
+    if (r.startsWith('FAILED_')) return false;
+    return true;
+  }
+
+  Future<void> _copyReference(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Reference number copied')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -592,43 +506,6 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
               ],
               const SizedBox(height: 48),
 
-              // Reference Number Card
-              Card(
-                elevation: 4,
-                child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Column(
-                    children: [
-                      Text(
-                        'Reference Number',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SelectableText(
-                        widget.referenceNumber,
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 2,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Show this number at the POS machine',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-
               // Amount
               Card(
                 child: Padding(
@@ -660,7 +537,60 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
+
+              // Fawry reference number (Pay at Fawry / tracking)
+              if (_showFawryReferenceCard) ...[
+                Card(
+                  elevation: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.numbers, color: AppColors.burgundy),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Fawry reference number',
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Copy',
+                              onPressed: () => _copyReference(widget.referenceNumber),
+                              icon: const Icon(Icons.copy),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        SelectableText(
+                          widget.referenceNumber,
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                        ),
+                        if (widget.merchantRefNum.isNotEmpty &&
+                            widget.merchantRefNum != widget.referenceNumber) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            'Merchant ref: ${widget.merchantRefNum}',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Colors.grey[600],
+                                ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // Instructions
               if (!_isPaid)
@@ -685,15 +615,12 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          '1. Go to the POS machine\n'
-                          '2. Enter the reference number above\n'
-                          '3. Complete your payment\n'
-                          '4. Status will update automatically when payment is confirmed',
+                          '• Pay with card: finish in the payment screen; status updates when Fawry confirms.\n'
+                          '• Pay at Fawry: choose Pay at Fawry in Fawry, then pay this amount at any Fawry outlet using the reference number above.\n'
+                          '• Status refreshes automatically every few seconds.',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontSize: 13,
                           ),
-                          maxLines: 6,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),

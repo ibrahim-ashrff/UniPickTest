@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
 import '../utils/page_transitions.dart';
 import '../ui/web_responsive_scaffold.dart';
-import 'main_navigation.dart';
+import 'verify_account_screen.dart';
 
 /// Signup screen for creating a new account
 /// Shows form fields for name, email, password, and confirm password
@@ -21,13 +21,30 @@ class _SignupScreenState extends State<SignupScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
+  final nameFocusNode = FocusNode();
+  final emailFocusNode = FocusNode();
+  final passwordFocusNode = FocusNode();
+  final confirmPasswordFocusNode = FocusNode();
   bool loading = false;
   String? signupError;
   bool obscurePassword = true;
   bool obscureConfirmPassword = true;
 
   @override
+  void initState() {
+    super.initState();
+    nameFocusNode.addListener(() => setState(() {}));
+    emailFocusNode.addListener(() => setState(() {}));
+    passwordFocusNode.addListener(() => setState(() {}));
+    confirmPasswordFocusNode.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
+    nameFocusNode.dispose();
+    emailFocusNode.dispose();
+    passwordFocusNode.dispose();
+    confirmPasswordFocusNode.dispose();
     nameController.dispose();
     emailController.dispose();
     passwordController.dispose();
@@ -82,15 +99,19 @@ class _SignupScreenState extends State<SignupScreen> {
           'name': nameController.text.trim(),
           'email': user.email,
           'role': 'customer', // Default role for all new users
+          'termsAcceptance': false,
           'createdAt': FieldValue.serverTimestamp(),
         });
+
+        // Send verification email
+        await user.sendEmailVerification();
       }
 
       if (!mounted) return;
 
-      // Navigate to home screen after successful signup
+      // Navigate to VerifyAccountScreen - user must verify email to login
       context.slideReplacementAll(
-        const MainNavigation(),
+        VerifyAccountScreen(email: emailController.text.trim()),
         direction: SlideDirection.left,
       );
     } on FirebaseAuthException catch (e) {
@@ -128,6 +149,7 @@ class _SignupScreenState extends State<SignupScreen> {
         title: const Text('Create Account'),
         backgroundColor: AppColors.burgundy,
         foregroundColor: Colors.white,
+        automaticallyImplyLeading: false,
       ),
       body: Container(
         color: AppColors.burgundy,
@@ -150,10 +172,11 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Name field
                 TextField(
                   controller: nameController,
+                  focusNode: nameFocusNode,
                   keyboardType: TextInputType.name,
                   decoration: InputDecoration(
-                    labelText: "Full Name",
-                    labelStyle: TextStyle(color: Colors.grey[600]),
+                    hintText: (nameFocusNode.hasFocus || nameController.text.isNotEmpty) ? null : "Full Name",
+                    hintStyle: TextStyle(color: Colors.grey[600]),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -170,20 +193,19 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                   ),
                   style: const TextStyle(color: AppColors.textPrimary),
-                  onChanged: (_) {
-                    if (signupError != null) {
-                      setState(() => signupError = null);
-                    }
-                  },
+                  onChanged: (_) => setState(() {
+                    if (signupError != null) signupError = null;
+                  }),
                 ),
                 const SizedBox(height: 16),
                 // Email field
                 TextField(
                   controller: emailController,
+                  focusNode: emailFocusNode,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
-                    labelText: "Email",
-                    labelStyle: TextStyle(color: Colors.grey[600]),
+                    hintText: (emailFocusNode.hasFocus || emailController.text.isNotEmpty) ? null : "Email",
+                    hintStyle: TextStyle(color: Colors.grey[600]),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -200,20 +222,19 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                   ),
                   style: const TextStyle(color: AppColors.textPrimary),
-                  onChanged: (_) {
-                    if (signupError != null) {
-                      setState(() => signupError = null);
-                    }
-                  },
+                  onChanged: (_) => setState(() {
+                    if (signupError != null) signupError = null;
+                  }),
                 ),
                 const SizedBox(height: 16),
                 // Password field
                 TextField(
                   controller: passwordController,
+                  focusNode: passwordFocusNode,
                   obscureText: obscurePassword,
                   decoration: InputDecoration(
-                    labelText: "Password",
-                    labelStyle: TextStyle(color: Colors.grey[600]),
+                    hintText: (passwordFocusNode.hasFocus || passwordController.text.isNotEmpty) ? null : "Password",
+                    hintStyle: TextStyle(color: Colors.grey[600]),
                     filled: true,
                     fillColor: Colors.white,
                     suffixIcon: IconButton(
@@ -241,20 +262,19 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                   ),
                   style: const TextStyle(color: AppColors.textPrimary),
-                  onChanged: (_) {
-                    if (signupError != null) {
-                      setState(() => signupError = null);
-                    }
-                  },
+                  onChanged: (_) => setState(() {
+                    if (signupError != null) signupError = null;
+                  }),
                 ),
                 const SizedBox(height: 16),
                 // Confirm password field
                 TextField(
                   controller: confirmPasswordController,
+                  focusNode: confirmPasswordFocusNode,
                   obscureText: obscureConfirmPassword,
                   decoration: InputDecoration(
-                    labelText: "Confirm Password",
-                    labelStyle: TextStyle(color: Colors.grey[600]),
+                    hintText: (confirmPasswordFocusNode.hasFocus || confirmPasswordController.text.isNotEmpty) ? null : "Confirm Password",
+                    hintStyle: TextStyle(color: Colors.grey[600]),
                     filled: true,
                     fillColor: Colors.white,
                     suffixIcon: IconButton(
@@ -282,11 +302,9 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                   ),
                   style: const TextStyle(color: AppColors.textPrimary),
-                  onChanged: (_) {
-                    if (signupError != null) {
-                      setState(() => signupError = null);
-                    }
-                  },
+                  onChanged: (_) => setState(() {
+                    if (signupError != null) signupError = null;
+                  }),
                 ),
                 if (signupError != null)
                   Padding(

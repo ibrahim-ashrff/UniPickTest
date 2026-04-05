@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/order.dart';
 import '../utils/app_colors.dart';
 import '../data/mock_food_trucks.dart';
+import '../widgets/item_thumbnail.dart';
+import '../widgets/order_estimator.dart';
 
 /// Screen that displays order receipt with all details
 class ReceiptScreen extends StatelessWidget {
@@ -17,6 +19,10 @@ class ReceiptScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Receipt'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
@@ -56,6 +62,15 @@ class ReceiptScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
 
+              // Order Confirmed + Pickup time + Estimator
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: OrderEstimator(order: order),
+                ),
+              ),
+              const SizedBox(height: 24),
+
               // Order Info
               Card(
                 child: Padding(
@@ -68,21 +83,15 @@ class ReceiptScreen extends StatelessWidget {
                           : order.id.substring(0, 8).toUpperCase()),
                       const Divider(),
                       _buildReceiptRow('Date', _formatDateTime(order.createdAt)),
-                      if (order.fawryReferenceNumber.isNotEmpty) ...[
-                        const Divider(),
-                        _buildReceiptRow('Fawry Ref', order.fawryReferenceNumber),
-                      ],
                       if (order.invoiceNumber != null) ...[
                         const Divider(),
                         _buildReceiptRow('Invoice #', order.invoiceNumber!),
                       ],
-                      const Divider(),
-                      _buildReceiptRow('Status', order.status.toUpperCase(),
-                        valueStyle: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: _getStatusColor(order.status),
-                        ),
-                      ),
+                      if (order.fawryReferenceNumber.isNotEmpty &&
+                          !order.fawryReferenceNumber.startsWith('FAILED_')) ...[
+                        const Divider(),
+                        _buildReceiptRow('Fawry reference', order.fawryReferenceNumber),
+                      ],
                     ],
                   ),
                 ),
@@ -109,6 +118,11 @@ class ReceiptScreen extends StatelessWidget {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            ItemThumbnail(
+                              imageUrl: item.menuItem.imageUrl,
+                              size: 48,
+                            ),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -304,26 +318,6 @@ class ReceiptScreen extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'paid':
-        return Colors.green;
-      case 'pending':
-      case 'unpaid':
-        return AppColors.burgundy; // Awaiting payment
-      case 'preparing':
-        return Colors.blue;
-      case 'ready':
-        return Colors.purple;
-      case 'completed':
-        return Colors.green;
-      case 'failed':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
   }
 
   String _formatDateTime(DateTime date) {

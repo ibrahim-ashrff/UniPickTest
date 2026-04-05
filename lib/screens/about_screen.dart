@@ -16,6 +16,10 @@ class AboutScreen extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -52,7 +56,7 @@ class AboutScreen extends StatelessWidget {
                       'Skip the line. Pick up smart.',
                       style: GoogleFonts.inter(
                         fontSize: 14,
-                        color: Colors.grey[600],
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -82,7 +86,7 @@ class AboutScreen extends StatelessWidget {
                       '1.0.0',
                       style: GoogleFonts.inter(
                         fontSize: 14,
-                        color: Colors.grey[600],
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -98,7 +102,7 @@ class AboutScreen extends StatelessWidget {
                       'UniPick is a food truck ordering app that allows you to skip the lines and pick up your orders quickly and efficiently.',
                       style: GoogleFonts.inter(
                         fontSize: 14,
-                        color: Colors.grey[600],
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         height: 1.5,
                       ),
                     ),

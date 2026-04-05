@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../models/food_truck.dart';
 import '../data/mock_food_trucks.dart';
@@ -50,9 +51,7 @@ class _FoodTruckListItem extends StatelessWidget {
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const MenuScreen(),
-            ),
+            CupertinoPageRoute(builder: (_) => const MenuScreen()),
           );
         },
         borderRadius: BorderRadius.circular(12),

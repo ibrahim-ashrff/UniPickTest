@@ -56,6 +56,7 @@ class AuthService {
             'email': user.email ?? '',
             'photoURL': user.photoURL ?? '',
             'role': 'customer', // Default role for new users
+            'termsAcceptance': false,
             'createdAt': FieldValue.serverTimestamp(),
             'lastLogin': FieldValue.serverTimestamp(),
           });
@@ -83,6 +84,23 @@ class AuthService {
   Future<void> signOut() async {
     await _googleSignIn.signOut();
     await _auth.signOut();
+  }
+
+  /// Deletes the current user's Firebase Auth account and their Firestore user document.
+  /// Throws if the user must re-authenticate (e.g. requires-recent-login).
+  Future<void> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final uid = user.uid;
+
+    // Delete Firestore user document first
+    await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+
+    // Delete Firebase Auth account (may throw requires-recent-login)
+    await user.delete();
+
+    await signOut();
   }
 
   Future<UserCredential?> signInWithApple() async {
@@ -124,6 +142,7 @@ class AuthService {
             'email': user.email ?? appleCredential.email ?? '',
             'photoURL': user.photoURL ?? '',
             'role': 'customer',
+            'termsAcceptance': false,
             'createdAt': FieldValue.serverTimestamp(),
             'lastLogin': FieldValue.serverTimestamp(),
             'provider': 'apple',

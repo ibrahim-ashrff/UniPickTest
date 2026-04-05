@@ -423,15 +423,6 @@ class _TruckOwnerDashboardScreenState extends State<TruckOwnerDashboardScreen> {
                                   ),
                                 ),
                               ),
-                              DataColumn(
-                                label: Text(
-                                  'Ref Number',
-                                  style: GoogleFonts.inter(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ),
                             ],
                             rows: _filteredOrders.map((order) {
                               final orderId = order['id'] as String? ?? '';
@@ -440,7 +431,6 @@ class _TruckOwnerDashboardScreenState extends State<TruckOwnerDashboardScreen> {
                               final items = order['items'] as List<dynamic>? ?? [];
                               final total = (order['total'] ?? 0.0).toDouble();
                               final status = (order['status'] ?? 'pending').toString();
-                              final refNumber = order['fawryReferenceNumber'] ?? 'N/A';
                               final displayOrderNumber = order['displayOrderNumber'] as int?;
 
                               return DataRow(
@@ -516,17 +506,6 @@ class _TruckOwnerDashboardScreenState extends State<TruckOwnerDashboardScreen> {
                                           fontWeight: FontWeight.w600,
                                           color: _getStatusColor(status),
                                         ),
-                                      ),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    SizedBox(
-                                      width: 100,
-                                      child: Text(
-                                        refNumber.toString(),
-                                        style: GoogleFonts.inter(fontSize: 11),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ),

@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../data/mock_food_trucks.dart';
 import '../models/food_truck.dart';
 import '../models/menu_item.dart';
 import '../state/cart_provider.dart';
+import '../state/favorites_provider.dart';
 import '../utils/app_colors.dart';
 import '../utils/page_transitions.dart';
 import 'cart_screen.dart';
+import 'menu_item_detail_screen.dart';
 
-/// Food truck menu screen displaying menu items for a specific food truck
-/// Follows burgundy + white theme with modern card UI
+/// Food truck menu screen with hero layout, category tabs, menu items with hearts, and favourites
 class FoodTruckMenuScreen extends StatefulWidget {
   final FoodTruck truck;
 
@@ -28,6 +31,8 @@ class _FoodTruckMenuScreenState extends State<FoodTruckMenuScreen>
   late AnimationController _animationController;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _fadeAnimation;
+  final Map<String, GlobalKey> _sectionKeys = {};
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -55,366 +60,664 @@ class _FoodTruckMenuScreenState extends State<FoodTruckMenuScreen>
   @override
   void dispose() {
     _animationController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              widget.truck.name,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              widget.truck.cuisine,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.white.withOpacity(0.9),
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-      body: Consumer<CartProvider>(
-        builder: (context, cart, child) {
-          // Show/hide animation based on cart state
-          final shouldShow = cart.items.isNotEmpty && cart.currentTruckId == widget.truck.id;
-          
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (shouldShow && _animationController.status != AnimationStatus.completed) {
-              _animationController.forward();
-            } else if (!shouldShow && _animationController.status != AnimationStatus.dismissed) {
-              _animationController.reverse();
-            }
-          });
-
-          return Stack(
-            children: [
-              Column(
-                children: [
-                  // Food truck header card
-                  Container(
-                    margin: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.background,
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: Stack(
-                        children: [
-                          // Truck image
-                          Container(
-                            height: 150,
-                            width: double.infinity,
-                            color: AppColors.greyLight,
-                            child: widget.truck.imageUrl.isNotEmpty
-                                ? Image.network(
-                                    widget.truck.imageUrl,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const Icon(
-                                      Icons.restaurant,
-                                      size: 60,
-                                      color: AppColors.grey,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.restaurant,
-                                    size: 60,
-                                    color: AppColors.grey,
-                                  ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // Menu items list - load from Firestore (real-time updates from truck owner)
-                  Expanded(
-                    child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('food_trucks')
-                          .doc(widget.truck.id)
-                          .collection('menu_items')
-                          .orderBy('name')
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
-
-                        if (snapshot.hasError) {
-                          return Center(
-                            child: Text(
-                              'Error loading menu: ${snapshot.error}',
-                              style: TextStyle(color: AppColors.textSecondary),
-                            ),
-                          );
-                        }
-
-                        // Always use Firestore data (truck owner's menu)
-                        final itemsToShow = snapshot.data?.docs.map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          return MenuItem(
-                            id: doc.id,
-                            name: data['name'] ?? '',
-                            description: data['description'] ?? '',
-                            price: (data['price'] ?? 0.0).toDouble(),
-                            imageUrl: data['imageUrl'],
-                          );
-                        }).toList() ?? [];
-                        
-                        if (itemsToShow.isEmpty) {
-                          return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.restaurant_menu,
-                                  size: 64,
-                                  color: AppColors.grey,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'No menu items available',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-                        
-                        return ListView.builder(
-                          padding: EdgeInsets.only(
-                            left: 16,
-                            right: 16,
-                            bottom: (cart.items.isNotEmpty && cart.currentTruckId == widget.truck.id) ? 90 : 16, // Add padding for mini cart
-                          ),
-                          itemCount: itemsToShow.length,
-                          itemBuilder: (context, index) {
-                            final item = itemsToShow[index];
-                            return _MenuItemCard(item: item, truckId: widget.truck.id);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              // Sticky Mini Cart - only show if cart has items for this truck
-              if (shouldShow)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: SlideTransition(
-                    position: _slideAnimation,
-                    child: FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: _StickyMiniCart(truckId: widget.truck.id),
-                    ),
-                  ),
-                ),
-            ],
-          );
-        },
-      ),
-    );
+  List<String> _getTruckCategories(Map<String, dynamic>? truckData) {
+    final list = truckData?['categories'];
+    if (list is List) {
+      return list.map((e) => e.toString()).toList();
+    }
+    return menuCategories;
   }
-}
 
-/// Menu item card widget
-class _MenuItemCard extends StatelessWidget {
-  final MenuItem item;
-  final String truckId;
-
-  const _MenuItemCard({required this.item, required this.truckId});
+  void _scrollToCategory(String category) {
+    final key = _sectionKeys[category];
+    if (key?.currentContext != null) {
+      Scrollable.ensureVisible(
+        key!.currentContext!,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final cart = Provider.of<CartProvider>(context);
+    final shouldShowMiniCart = cart.items.isNotEmpty && cart.currentTruckId == widget.truck.id;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (shouldShowMiniCart && _animationController.status != AnimationStatus.completed) {
+        _animationController.forward();
+      } else if (!shouldShowMiniCart && _animationController.status != AnimationStatus.dismissed) {
+        _animationController.reverse();
+      }
+    });
+
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Item image placeholder
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.greyLight,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.fastfood,
-                size: 40,
-                color: AppColors.grey,
-              ),
-            ),
-            const SizedBox(width: 16),
-            // Item details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.name,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    item.description,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'EGP ${item.price.toStringAsFixed(0)}',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.burgundy,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Add button
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.burgundy,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.add,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              onPressed: () async {
-                final success = cart.addItem(item, truckId: truckId);
-                if (!success) {
-                  // Different truck detected, show dialog
-                  final shouldReplace = await _showDifferentTruckDialog(context, item.name);
-                  if (shouldReplace == true) {
-                    cart.replaceCartAndAddItem(item, truckId);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('${item.name} added to cart'),
-                          duration: const Duration(seconds: 1),
-                          backgroundColor: AppColors.burgundy,
+      body: Stack(
+        children: [
+          CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+              SliverToBoxAdapter(child: _HeroSection(truck: widget.truck)),
+              SliverToBoxAdapter(
+                child: StreamBuilder<DocumentSnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('food_trucks')
+                      .doc(widget.truck.id)
+                      .snapshots(),
+                  builder: (context, truckSnapshot) {
+                    final truckData = truckSnapshot.data?.data() as Map<String, dynamic>?;
+                    final truckCategoryOrder = _getTruckCategories(truckData);
+
+                    return StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('food_trucks')
+                          .doc(widget.truck.id)
+                          .collection('menu_items')
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          'Error loading menu: ${snapshot.error}',
+                          style: TextStyle(color: AppColors.textSecondary),
                         ),
                       );
                     }
-                  }
-                  // If shouldReplace is false or null, user chose to keep old cart
-                } else {
-                  // Successfully added
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('${item.name} added to cart'),
-                        duration: const Duration(seconds: 1),
-                        backgroundColor: AppColors.burgundy,
-                      ),
+
+                    final items = (snapshot.data?.docs ?? []).map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return MenuItem(
+                        id: doc.id,
+                        name: data['name'] ?? '',
+                        description: data['description'] ?? '',
+                        price: (data['price'] ?? 0.0).toDouble(),
+                        imageUrl: data['imageUrl'],
+                        category: data['category'] ?? 'Sides',
+                      );
+                    }).toList();
+
+                    if (items.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Center(
+                          child: Column(
+                            children: [
+                              Icon(Icons.restaurant_menu, size: 64, color: AppColors.grey),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No menu items available',
+                                style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+
+                    // Group by category
+                    final grouped = <String, List<MenuItem>>{};
+                    for (final item in items) {
+                      final cat = item.category;
+                      grouped.putIfAbsent(cat, () => []).add(item);
+                    }
+                    // Order: truck's categories first, then any others from items
+                    final orderedCats = <String>[];
+                    for (final c in truckCategoryOrder) {
+                      if (grouped.containsKey(c)) orderedCats.add(c);
+                    }
+                    for (final k in grouped.keys) {
+                      if (!orderedCats.contains(k)) orderedCats.add(k);
+                    }
+                    // Ensure section keys exist for scroll-to
+                    for (final c in orderedCats) {
+                      _sectionKeys.putIfAbsent(c, () => GlobalKey());
+                    }
+
+                    return _MenuWithTabs(
+                      categories: orderedCats,
+                      groupedItems: grouped,
+                      truck: widget.truck,
+                      sectionKeys: _sectionKeys,
+                      onCategoryTap: _scrollToCategory,
                     );
-                  }
-                }
+                  },
+                );
               },
             ),
-          ],
-        ),
+            ),
+              SliverToBoxAdapter(
+                child: Consumer<FavoritesProvider>(
+                  builder: (context, favorites, _) {
+                    final favs = favorites.items;
+                    if (favs.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 24, 16, 120),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Favourites',
+                                style: GoogleFonts.inter(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(Icons.favorite, size: 20, color: Colors.red.shade400),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            height: 140,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: favs.length,
+                              itemBuilder: (context, index) {
+                                final fav = favs[index];
+                                final found = mockFoodTrucks.where((t) => t.id == fav.truckId).toList();
+                                final truck = found.isNotEmpty
+                                    ? found.first
+                                    : FoodTruck(
+                                        id: fav.truckId,
+                                        name: fav.truckName,
+                                        cuisine: '',
+                                        rating: 0,
+                                        imageUrl: '',
+                                        isOpen: true,
+                                      );
+                                return _FavoriteItemCard(
+                                  favorite: fav,
+                                  onTap: () {
+                                    context.slideTo(
+                                      FoodTruckMenuScreen(truck: truck),
+                                      direction: SlideDirection.right,
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+          if (shouldShowMiniCart)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SlideTransition(
+                position: _slideAnimation,
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: _StickyMiniCart(truckId: widget.truck.id),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
 }
 
-/// Shows a dialog when user tries to add item from different food truck
+/// Menu content with category tabs and sections
+class _MenuWithTabs extends StatelessWidget {
+  final List<String> categories;
+  final Map<String, List<MenuItem>> groupedItems;
+  final FoodTruck truck;
+  final Map<String, GlobalKey> sectionKeys;
+  final void Function(String) onCategoryTap;
+
+  const _MenuWithTabs({
+    required this.categories,
+    required this.groupedItems,
+    required this.truck,
+    required this.sectionKeys,
+    required this.onCategoryTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Menu',
+            style: GoogleFonts.inter(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Category tabs
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: categories.map((cat) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ActionChip(
+                    label: Text(cat),
+                    onPressed: () => onCategoryTap(cat),
+                    backgroundColor: AppColors.burgundy.withOpacity(0.1),
+                    labelStyle: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.burgundy,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Category sections
+          ...categories.map((cat) {
+            final items = groupedItems[cat] ?? [];
+            if (items.isEmpty) return const SizedBox.shrink();
+            return Column(
+              key: sectionKeys[cat],
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  cat,
+                  style: GoogleFonts.inter(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.72,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    return _MenuItemCard(item: items[index], truck: truck);
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hero section: large image, name, address, Open/Closed
+class _HeroSection extends StatelessWidget {
+  final FoodTruck truck;
+
+  const _HeroSection({required this.truck});
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final heroHeight = screenHeight * 0.36;
+
+    return SizedBox(
+      height: heroHeight,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          truck.imageUrl.isNotEmpty
+              ? Image.network(
+                  truck.imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: AppColors.burgundy,
+                    child: const Icon(Icons.restaurant, size: 80, color: Colors.white54),
+                  ),
+                )
+              : Container(
+                  color: AppColors.burgundy,
+                  child: const Icon(Icons.restaurant, size: 80, color: Colors.white54),
+                ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(0.3),
+                  Colors.black.withOpacity(0.6),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 48, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Spacer(),
+                Text(
+                  truck.name,
+                  style: GoogleFonts.inter(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  truck.description ?? '832 Spadina Blvd.',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: Colors.white.withOpacity(0.9),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                StreamBuilder<DocumentSnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('food_trucks')
+                      .doc(truck.id)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    final isOpen = (snapshot.data?.data() as Map<String, dynamic>?)?['isOpen'] ?? truck.isOpen;
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isOpen ? Colors.black : Colors.grey.shade700,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        isOpen ? 'Open Now' : 'Closed',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Menu item card - uses Consumer for heart only to avoid full rebuild
+class _MenuItemCard extends StatelessWidget {
+  final MenuItem item;
+  final FoodTruck truck;
+
+  const _MenuItemCard({required this.item, required this.truck});
+
+  @override
+  Widget build(BuildContext context) {
+    final cart = Provider.of<CartProvider>(context);
+    return InkWell(
+      onTap: () {
+        context.slideTo(
+          MenuItemDetailScreen(item: item, truck: truck),
+          direction: SlideDirection.right,
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Card(
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        clipBehavior: Clip.antiAlias,
+        margin: EdgeInsets.zero,
+        child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 3,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                item.imageUrl != null && item.imageUrl!.isNotEmpty
+                    ? Image.network(
+                        item.imageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _buildPlaceholder(context),
+                      )
+                    : _buildPlaceholder(context),
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Consumer<FavoritesProvider>(
+                    builder: (context, favorites, _) {
+                      final isFav = favorites.isFavorite(truck.id, item.id);
+                      return GestureDetector(
+                        onTap: () => favorites.toggle(item, truck.id, truck.name),
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.9),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isFav ? Icons.favorite : Icons.favorite_border,
+                            size: 20,
+                            color: isFav ? Colors.red : Colors.grey.shade600,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    item.name,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'EGP ${item.price.toStringAsFixed(0)}',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.burgundy,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () async {
+                          final success = cart.addItem(item, truckId: truck.id);
+                          if (!success) {
+                            final shouldReplace = await _showDifferentTruckDialog(context, item.name);
+                            if (shouldReplace == true) {
+                              cart.replaceCartAndAddItem(item, truck.id);
+                            }
+                          }
+                          // No snackbar: the view-cart bar at bottom shows automatically
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: AppColors.burgundy,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.add, color: Colors.white, size: 18),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder(BuildContext context) {
+    return Container(
+      color: AppColors.greyLight,
+      child: Icon(Icons.fastfood, size: 40, color: AppColors.grey),
+    );
+  }
+}
+
+class _FavoriteItemCard extends StatelessWidget {
+  final FavoriteMenuItem favorite;
+  final VoidCallback onTap;
+
+  const _FavoriteItemCard({required this.favorite, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final item = favorite.menuItem;
+    final imageUrl = item.imageUrl;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 130,
+        margin: const EdgeInsets.only(right: 12),
+        child: Card(
+          elevation: 1,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: imageUrl != null && imageUrl.isNotEmpty
+                    ? Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        errorBuilder: (_, __, ___) => _placeholder(context),
+                      )
+                    : _placeholder(context),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.name,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      favorite.truckName,
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _placeholder(BuildContext context) {
+    return Container(
+      color: AppColors.greyLight,
+      child: Center(child: Icon(Icons.fastfood, size: 32, color: AppColors.grey)),
+    );
+  }
+}
+
 Future<bool?> _showDifferentTruckDialog(BuildContext context, String itemName) {
   return showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(
-        'Different Food Truck',
-        style: GoogleFonts.inter(
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+    builder: (ctx) => AlertDialog(
+      title: Text('Different Food Truck', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
       content: Text(
-        'You cannot add items from different food trucks.\n\n'
         'Your cart contains items from another food truck.\n\n'
         'Would you like to delete the old cart and add "$itemName"?',
         style: GoogleFonts.inter(),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: Text(
-            'Keep Old Cart',
-            style: GoogleFonts.inter(
-              color: AppColors.textSecondary,
-            ),
-          ),
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: Text('Keep Old Cart', style: GoogleFonts.inter(color: AppColors.textSecondary)),
         ),
         ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.burgundy,
-            foregroundColor: Colors.white,
-          ),
-          child: Text(
-            'Delete Old Cart & Add New Item',
-            style: GoogleFonts.inter(),
-          ),
+          onPressed: () => Navigator.of(ctx).pop(true),
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.burgundy, foregroundColor: Colors.white),
+          child: Text('Delete Old Cart & Add New Item', style: GoogleFonts.inter()),
         ),
       ],
     ),
   );
 }
 
-/// Sticky mini cart widget that appears at the bottom of the menu screen
 class _StickyMiniCart extends StatelessWidget {
   final String truckId;
 
@@ -423,17 +726,10 @@ class _StickyMiniCart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Consumer<CartProvider>(
-      builder: (context, cart, child) {
-        // Don't show if cart is empty
-        if (cart.items.isEmpty) {
+      builder: (context, cart, _) {
+        if (cart.items.isEmpty || cart.currentTruckId != truckId) {
           return const SizedBox.shrink();
         }
-
-        // Only show if cart is for this truck
-        if (cart.currentTruckId != truckId) {
-          return const SizedBox.shrink();
-        }
-
         return SafeArea(
           top: false,
           child: Container(
@@ -452,21 +748,15 @@ class _StickyMiniCart extends StatelessWidget {
             ),
             child: Row(
               children: [
-                // Cart icon
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: AppColors.burgundy.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(
-                    Icons.shopping_cart,
-                    color: AppColors.burgundy,
-                    size: 20,
-                  ),
+                  child: Icon(Icons.shopping_cart, color: AppColors.burgundy, size: 20),
                 ),
                 const SizedBox(width: 12),
-                // Cart summary
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -474,64 +764,31 @@ class _StickyMiniCart extends StatelessWidget {
                     children: [
                       Text(
                         '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'} • EGP ${cart.total.toStringAsFixed(0)}',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
+                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                       ),
                       const SizedBox(height: 2),
-                      // Show latest added items
-                      if (cart.items.length <= 3)
-                        Text(
-                          cart.items
-                              .map((item) => '${item.quantity}x ${item.menuItem.name}')
-                              .join(', '),
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        )
-                      else
-                        Text(
-                          '${cart.items.take(2).map((item) => '${item.quantity}x ${item.menuItem.name}').join(', ')}, +${cart.items.length - 2} more',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      Text(
+                        cart.items.length <= 3
+                            ? cart.items.map((i) => '${i.quantity}x ${i.menuItem.name}').join(', ')
+                            : '${cart.items.take(2).map((i) => '${i.quantity}x ${i.menuItem.name}').join(', ')}, +${cart.items.length - 2} more',
+                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 12),
-                // View Cart button
                 ElevatedButton(
-                  onPressed: () {
-                    context.slideTo(
-                      const CartScreen(),
-                      direction: SlideDirection.right,
-                    );
-                  },
+                  onPressed: () => context.slideTo(const CartScreen(), direction: SlideDirection.right),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.burgundy,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     elevation: 0,
                   ),
-                  child: Text(
-                    'View Cart',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  child: Text('View Cart', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
                 ),
               ],
             ),
@@ -541,4 +798,3 @@ class _StickyMiniCart extends StatelessWidget {
     );
   }
 }
-

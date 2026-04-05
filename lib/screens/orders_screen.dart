@@ -1,11 +1,12 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../state/orders_provider.dart';
 import '../models/order.dart';
 import '../utils/page_transitions.dart';
-import '../utils/app_colors.dart';
 import '../data/mock_food_trucks.dart';
+import '../widgets/order_estimator.dart';
 import 'receipt_screen.dart';
 
 /// Screen that displays user's order history
@@ -18,46 +19,8 @@ class OrdersScreen extends StatefulWidget {
 }
 
 class _OrdersScreenState extends State<OrdersScreen> {
-
-  String _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'paid':
-        return 'green';
-      case 'pending':
-      case 'unpaid':
-        return 'burgundy'; // Awaiting payment
-      case 'preparing':
-        return 'blue';
-      case 'ready':
-        return 'purple';
-      case 'completed':
-        return 'green';
-      case 'failed':
-        return 'red';
-      default:
-        return 'grey';
-    }
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'paid':
-        return Icons.check_circle;
-      case 'pending':
-      case 'unpaid':
-        return Icons.pending; // Awaiting payment
-      case 'preparing':
-        return Icons.restaurant;
-      case 'ready':
-        return Icons.done_all;
-      case 'completed':
-        return Icons.check_circle_outline;
-      case 'failed':
-        return Icons.error;
-      default:
-        return Icons.info;
-    }
-  }
+  Color _greyColor(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? Colors.grey[400]! : Colors.grey[600]!;
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +53,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     'Error loading orders',
                     style: TextStyle(
                       fontSize: 20,
-                      color: Colors.grey[600],
+                      color: _greyColor(context),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -98,7 +61,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     '${snapshot.error}',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey[500],
+                      color: _greyColor(context),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -117,14 +80,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   Icon(
                     Icons.receipt_long,
                     size: 80,
-                    color: Colors.grey[400],
+                    color: _greyColor(context),
                   ),
                   const SizedBox(height: 16),
                   Text(
                     'No orders yet',
                     style: TextStyle(
                       fontSize: 20,
-                      color: Colors.grey[600],
+                      color: _greyColor(context),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -132,7 +95,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     'Your orders will appear here',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey[500],
+                      color: _greyColor(context),
                     ),
                   ),
                 ],
@@ -150,8 +113,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
               itemCount: orders.length,
               itemBuilder: (context, index) {
                 final order = orders[index];
-                final statusColor = _getStatusColor(order.status);
-                final statusIcon = _getStatusIcon(order.status);
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -160,8 +121,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (context) => ReceiptScreen(order: order),
+                        CupertinoPageRoute(
+                          builder: (_) => ReceiptScreen(order: order),
                         ),
                       );
                     },
@@ -170,6 +131,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          OrderEstimator(order: order, compact: true),
+                          const SizedBox(height: 12),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -211,45 +174,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                   ],
                                 ),
                               ),
-                              Flexible(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: _getStatusColorValue(statusColor).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: _getStatusColorValue(statusColor),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        statusIcon,
-                                        size: 14,
-                                        color: _getStatusColorValue(statusColor),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Flexible(
-                                        child: Text(
-                                          order.status.toUpperCase(),
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: _getStatusColorValue(statusColor),
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
                             ],
                           ),
                           const Divider(height: 24),
@@ -267,18 +191,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                         color: Colors.grey[700],
                                       ),
                                     ),
-                                    if (order.fawryReferenceNumber.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Ref: ${order.fawryReferenceNumber}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[600],
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
                                   ],
                                 ),
                               ),
@@ -324,23 +236,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
         },
       ),
     );
-  }
-
-  Color _getStatusColorValue(String colorName) {
-    switch (colorName) {
-      case 'green':
-        return Colors.green;
-      case 'burgundy':
-        return AppColors.burgundy;
-      case 'blue':
-        return Colors.blue;
-      case 'purple':
-        return Colors.purple;
-      case 'red':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
   }
 
   String _formatDate(DateTime date) {

@@ -1,13 +1,37 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../state/cart_provider.dart';
+import '../state/guest_provider.dart';
+import 'package:fawry_sdk/model/payment_methods.dart';
 import '../payments/fawry_payment.dart';
 import '../utils/app_colors.dart';
+import '../widgets/item_thumbnail.dart';
 import 'home_screen.dart';
+import 'login_page.dart';
 import 'payment_status_screen.dart';
+
+/// Egyptian mobile for Fawry (digits; many flows expect 01xxxxxxxxx).
+String _fawryCustomerMobile(User? user) {
+  final raw = user?.phoneNumber?.trim();
+  if (raw == null || raw.isEmpty) {
+    // Fawry staging often validates Egyptian MSISDN shape; use a common test pattern if user has no phone on the account
+    return '01012345678';
+  }
+  var s = raw.replaceAll(RegExp(r'\s'), '');
+  if (s.startsWith('+20')) {
+    s = s.substring(3);
+  } else if (s.startsWith('0020')) {
+    s = s.substring(4);
+  } else if (s.startsWith('20') && s.length >= 12) {
+    s = s.substring(2);
+  }
+  if (s.length == 10 && !s.startsWith('0')) {
+    s = '0$s';
+  }
+  return s;
+}
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -18,15 +42,30 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final TextEditingController _notesController = TextEditingController();
-  bool _isProcessing = false;
+  /// True while Fawry pay() is in progress — blocks double submit until callback, timeout, or error.
+  bool _fawryPayInFlight = false;
+  /// Pay button spinner only; cleared when native handoff returns. Payment state still follows _fawryPayInFlight until callback/timeout.
+  bool _showPayButtonSpinner = false;
   String? _currentMerchantRefNum; // Store merchantRefNum from pay() call
-  // TODO: Replace with your real Apple Pay Merchant ID (e.g., merchant.com.yourapp)
-  static const String _applePayMerchantId = 'merchant.com.yourapp';
+  String? _lastListenerUserId; // Track which user the Fawry listener is for (re-setup on account change)
 
   @override
   void initState() {
     super.initState();
+    _lastListenerUserId = FirebaseAuth.instance.currentUser?.uid;
     _setupPaymentListener();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid != _lastListenerUserId) {
+      FawryPayment.cancel(context);
+      _lastListenerUserId = currentUid;
+      _currentMerchantRefNum = null;
+      _setupPaymentListener();
+    }
   }
 
   void _setupPaymentListener() {
@@ -40,11 +79,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         debugPrint("FAWRY DATA: ${response.data ?? ''}"); // Log the data field
         debugPrint("FAWRY ERROR: ${response.error ?? ''}"); // Log error field
         
-        // Check payment status - prioritize success checks first
-        final statusStr = (response.status ?? '').toString().toUpperCase();
-        final isPaid = statusStr == 'PAID' || statusStr == 'SUCCESS' || statusStr == '200';
-        
-        // Parse orderStatus from data - 102 with UNPAID means "awaiting payment at Fawry", NOT failed
+        // Parse orderStatus from data first — 102 + PAID means card/charge succeeded (not only 100).
         String? orderStatusFromData;
         if (response.data != null) {
           try {
@@ -54,17 +89,53 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             }
           } catch (_) {}
         }
+
+        final statusStr = (response.status ?? '').toString();
+        final statusStrUpper = statusStr.toUpperCase();
+        final isPaid = statusStr == '100' ||
+            statusStrUpper == 'PAID' ||
+            statusStrUpper == 'SUCCESS' ||
+            statusStrUpper == '200' ||
+            (statusStrUpper == '102' &&
+                (orderStatusFromData == 'PAID' || orderStatusFromData == 'SUCCESS'));
         
-        // Only mark as failed if orderStatus is explicitly FAILED, or status is 101/CANCELLED
-        // 102 with UNPAID = pending (user got reference number, awaiting payment at Fawry)
+        // Duplicate request: 101 with "Request already processed" = same merchantRefNum sent twice.
+        // On Fawry dashboard the order shows as UNPAID (pending), not failed. Don't register as failed.
+        final message = (response.message ?? '').toString();
+        final isDuplicateRequest = statusStrUpper == '101' &&
+            (message.contains('Request already processed') ||
+             message.contains('merchantRefNum value should be changed'));
+        if (isDuplicateRequest && mounted) {
+          FawryPayment.clearAwaitingReturnFromFawry();
+          setState(() {
+            _fawryPayInFlight = false;
+            _showPayButtonSpinner = false;
+          });
+          _currentMerchantRefNum = null; // Next tap will generate a fresh merchantRefNum
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This payment was already submitted. Tap "Pay with Fawry" again to start a new payment.',
+              ),
+              duration: Duration(seconds: 5),
+            ),
+          );
+          debugPrint("🔄 Duplicate Fawry request - staying on checkout for retry");
+          return;
+        }
+
+        // Only mark as failed if orderStatus is explicitly failed/declined, or status is 101/CANCELLED (Fawry guide: 101 = error)
+        // 102 with UNPAID = pending (user got reference number, awaiting payment at Fawry); 102 + FAILED/DECLINED = card/charge failed
         final isFailed = !isPaid && (
-                        statusStr == '101' || 
-                        statusStr == 'FAILED' || 
-                        statusStr == 'CANCELLED' ||
-                        orderStatusFromData == 'FAILED');
+                        statusStrUpper == '101' ||
+                        statusStrUpper == 'FAILED' ||
+                        statusStrUpper == 'CANCELLED' ||
+                        orderStatusFromData == 'FAILED' ||
+                        orderStatusFromData == 'DECLINED' ||
+                        orderStatusFromData == 'REJECTED');
         
         debugPrint("🔍 Payment Status Check:");
-        debugPrint("   - Status String: $statusStr");
+        debugPrint("   - Status String: $statusStr ($statusStrUpper)");
         debugPrint("   - Is Paid: $isPaid");
         debugPrint("   - Is Failed: $isFailed");
         debugPrint("   - Error Field: ${response.error ?? 'null'}");
@@ -77,14 +148,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             final dataJson = jsonDecode(response.data!);
             if (dataJson is Map) {
               // Try common field names for reference number
-              referenceNumber = dataJson['referenceNumber'] ?? 
-                               dataJson['merchantRefNum'] ?? 
-                               dataJson['fawryRefNumber'] ??
-                               dataJson['orderRefNumber'] ??
-                               dataJson['refNumber'] ??
-                               dataJson['fawryRefNum'] ??
-                               dataJson['chargeResponse']['merchantRefNumber'] ??
-                               dataJson['chargeResponse']['referenceNumber'];
+              referenceNumber = dataJson['referenceNumber'] ??
+                  dataJson['merchantRefNum'] ??
+                  dataJson['fawryRefNumber'] ??
+                  dataJson['orderRefNumber'] ??
+                  dataJson['refNumber'] ??
+                  dataJson['fawryRefNum'];
+              if ((referenceNumber == null || referenceNumber.toString().isEmpty)) {
+                final cr = dataJson['chargeResponse'];
+                if (cr is Map) {
+                  referenceNumber = cr['merchantRefNumber'] ?? cr['referenceNumber'];
+                }
+              }
             }
           } catch (e) {
             // If data is not JSON, it might be the reference number itself
@@ -104,8 +179,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           
           // Navigate to payment status screen with reference number
           if (mounted) {
-            setState(() => _isProcessing = false);
-            
+            setState(() {
+              _fawryPayInFlight = false;
+              _showPayButtonSpinner = false;
+            });
+
             // Get the amount from cart
             final cart = Provider.of<CartProvider>(context, listen: false);
             final amount = cart.total;
@@ -137,16 +215,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ? null 
                 : _notesController.text.trim();
             
-            // Check if payment failed and pass status (only if actually failed, not if paid)
+            // Check if payment failed and pass status (only if actually failed, not if paid).
+            // Do not pass raw "102" — PaymentStatusScreen treats 102 as pending (Pay at Fawry); map failed 102 to FAILED.
             String? initialStatus;
             if (isFailed && !isPaid) {
-              initialStatus = statusStr;
-              debugPrint("⚠️ Payment failed - passing status to PaymentStatusScreen: $statusStr");
+              initialStatus = statusStrUpper == '102'
+                  ? 'FAILED'
+                  : (statusStrUpper.isNotEmpty ? statusStrUpper : 'FAILED');
+              debugPrint("⚠️ Payment failed - passing status to PaymentStatusScreen: $initialStatus (Fawry status=$statusStr)");
             } else if (isPaid) {
               debugPrint("✅ Payment successful - will be handled by PaymentStatusScreen");
             }
             
             // Navigate to payment status screen (referenceNumber is guaranteed non-null here)
+            FawryPayment.clearAwaitingReturnFromFawry();
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
                 builder: (context) => PaymentStatusScreen(
@@ -171,11 +253,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             debugPrint("❌ Payment failed - handling failure without reference number");
             debugPrint("   Status: $statusStr");
             debugPrint("   Error: ${response.error ?? ''}");
-            setState(() => _isProcessing = false);
-            
+            setState(() {
+              _fawryPayInFlight = false;
+              _showPayButtonSpinner = false;
+            });
+
             final cart = Provider.of<CartProvider>(context, listen: false);
             final amount = cart.total;
-            
+
             // Generate placeholder reference number for failed payment
             final failedRef = 'FAILED_${DateTime.now().millisecondsSinceEpoch}';
             final merchantRefNum = _currentMerchantRefNum ?? failedRef;
@@ -185,7 +270,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 : _notesController.text.trim();
             
             // Navigate to payment status screen to handle the failure
-            // Pass the status so it knows it's already failed
+            final failedInitialStatus = statusStrUpper == '102'
+                ? 'FAILED'
+                : (statusStrUpper.isNotEmpty ? statusStr : 'FAILED');
+            FawryPayment.clearAwaitingReturnFromFawry();
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
                 builder: (context) => PaymentStatusScreen(
@@ -193,7 +281,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   amount: amount,
                   merchantRefNum: merchantRefNum,
                   notes: notes,
-                  initialStatus: statusStr, // Pass the failed status
+                  initialStatus: failedInitialStatus,
                 ),
               ),
             );
@@ -203,11 +291,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (!mounted) return;
 
         // Always stop loading on any callback
-        setState(() => _isProcessing = false);
+        FawryPayment.clearAwaitingReturnFromFawry();
+        setState(() {
+          _fawryPayInFlight = false;
+          _showPayButtonSpinner = false;
+        });
 
         // If we have a status but no reference number, show message
-        final status = (response.status ?? "").toUpperCase();
-        if (status == "PAID" || status == "SUCCESS") {
+        final status = (response.status ?? "").toString();
+        final statusUpper = status.toUpperCase();
+        if (status == "100" || statusUpper == "PAID" || statusUpper == "SUCCESS") {
           // If paid but no reference number, complete order anyway
           _placeOrder(context, null);
         } else {
@@ -221,8 +314,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       },
       onError: (e) {
         debugPrint("Fawry callback error: $e");
+        FawryPayment.clearAwaitingReturnFromFawry();
         if (!mounted) return;
-        setState(() => _isProcessing = false);
+        setState(() {
+          _fawryPayInFlight = false;
+          _showPayButtonSpinner = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Fawry callback error: $e")),
         );
@@ -231,25 +328,77 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
 
+  void _showGuestPayDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Account required'),
+        content: const Text(
+          'You need to create an account to use this feature.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginPage()),
+                (route) => false,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.burgundy,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Create account'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _notesController.dispose();
+    FawryPayment.clearAwaitingReturnFromFawry();
     // Cancel payment listener when checkout screen is disposed
     FawryPayment.cancel(context);
     super.dispose();
   }
 
   Future<void> _processPayment(BuildContext context) async {
+    // Prevent double-tap: block immediately so a second tap before redirect does not send another request
+    if (_fawryPayInFlight) return;
+    setState(() {
+      _fawryPayInFlight = true;
+      _showPayButtonSpinner = true;
+    });
+
     final cart = Provider.of<CartProvider>(context, listen: false);
+    final isGuest = Provider.of<GuestProvider>(context, listen: false).isGuest;
+
+    if (isGuest) {
+      setState(() {
+        _fawryPayInFlight = false;
+        _showPayButtonSpinner = false;
+      });
+      _showGuestPayDialog(context);
+      return;
+    }
 
     if (cart.items.isEmpty) {
+      setState(() {
+        _fawryPayInFlight = false;
+        _showPayButtonSpinner = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cart is empty')),
       );
       return;
     }
-
-    setState(() => _isProcessing = true);
 
     try {
       // Get user info
@@ -274,27 +423,48 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final customerProfileId = firebaseUser.uid;
       final customerName = firebaseUser.displayName ?? firebaseUser.email ?? "UNIPICK User";
       final customerEmail = firebaseUser.email ?? "test@test.com";
-      
+
+      // Alphanumeric ref per Fawry guide (underscore/UID refs often fail card auth; Pay-at-Fawry may still work).
+      final merchantRefNum = FawryPayment.generateMerchantRefNum();
+
+      // Store before calling pay so status screen can use it
+      _currentMerchantRefNum = merchantRefNum;
+      debugPrint("Generated merchantRefNum: $merchantRefNum");
+
+      // So that if user presses back in Fawry and lands on home, we redirect to checkout on app resume
+      FawryPayment.setAwaitingReturnFromFawry(true);
+
       // IMPORTANT: use the exact merchant code you were given
-      final merchantRefNum = await FawryPayment.pay(
+      final payFuture = FawryPayment.pay(
         merchantCode: "770000021908",
         secureHashKey: "b4afb94e0a554815a17ed505de2f9e67", // "Security Key / Hash code" from Fawry
+        merchantRefNum: merchantRefNum,
         customerProfileId: customerProfileId,
         customerName: customerName,
         customerEmail: customerEmail,
-        customerMobile: "01012345678", // No +20 prefix for test
+        customerMobile: _fawryCustomerMobile(firebaseUser),
         amountEgp: cart.total.toDouble(),
+        // ALL = card + Pay at Fawry (reference number at outlet) + wallet where enabled
+        paymentMethods: PaymentMethods.ALL,
+        payWithCardToken: true,
       );
-      
-      // Store merchantRefNum for later use (we'll need it for status checks)
-      _currentMerchantRefNum = merchantRefNum;
-      debugPrint("Generated merchantRefNum: $merchantRefNum");
+
+      await payFuture;
+
+      if (!mounted) return;
+
+      // Stop button spinner when Fawry UI has taken over (SDK update handles timing). Pay stays disabled until callback or timeout.
+      setState(() => _showPayButtonSpinner = false);
 
       // Safety: if no callback arrives within 20s, unlock UI
       Future.delayed(const Duration(seconds: 20), () {
         if (!mounted) return;
-        if (_isProcessing) {
-          setState(() => _isProcessing = false);
+        FawryPayment.clearAwaitingReturnFromFawry();
+        if (_fawryPayInFlight) {
+          setState(() {
+            _fawryPayInFlight = false;
+            _showPayButtonSpinner = false;
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("No response from Fawry yet. Check logcat.")),
           );
@@ -305,68 +475,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // when payment is successful. You can call _placeOrder() in the callback.
     } catch (e) {
       if (!mounted) return;
-      
-      setState(() => _isProcessing = false);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Payment failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
 
-  Future<void> _processApplePay(BuildContext context) async {
-    final cart = Provider.of<CartProvider>(context, listen: false);
-
-    if (cart.items.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cart is empty')),
-      );
-      return;
-    }
-
-    setState(() => _isProcessing = true);
-
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      final firebaseUser = user;
-      if (firebaseUser == null) {
-        throw Exception('User not logged in');
-      }
-
-      final customerProfileId = firebaseUser.uid;
-      final customerName = firebaseUser.displayName ?? firebaseUser.email ?? "UNIPICK User";
-      final customerEmail = firebaseUser.email ?? "test@test.com";
-
-      final merchantRefNum = await FawryPayment.pay(
-        merchantCode: "770000021908",
-        secureHashKey: "b4afb94e0a554815a17ed505de2f9e67",
-        customerProfileId: customerProfileId,
-        customerName: customerName,
-        customerEmail: customerEmail,
-        customerMobile: "01012345678",
-        amountEgp: cart.total.toDouble(),
-        enableApplePay: true,
-        applePayMerchantId: _applePayMerchantId,
-      );
-
-      _currentMerchantRefNum = merchantRefNum;
-      debugPrint("Generated merchantRefNum (Apple Pay): $merchantRefNum");
-
-      Future.delayed(const Duration(seconds: 20), () {
-        if (!mounted) return;
-        if (_isProcessing) {
-          setState(() => _isProcessing = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("No response from Fawry yet. Check logcat.")),
-          );
-        }
+      setState(() {
+        _fawryPayInFlight = false;
+        _showPayButtonSpinner = false;
       });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isProcessing = false);
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Payment failed: $e'),
@@ -415,16 +529,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     if (!mounted) return;
 
-    setState(() => _isProcessing = false);
+    setState(() {
+      _fawryPayInFlight = false;
+      _showPayButtonSpinner = false;
+    });
 
-    // Show success message with reference number and navigate back to home
+    // Show success message and navigate back to home
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(fawryReferenceNumber != null
-          ? 'Order placed successfully! ✅\nRef: $fawryReferenceNumber'
-          : 'Order placed successfully! ✅'),
+      const SnackBar(
+        content: Text('Order placed successfully! ✅'),
         backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
+        duration: Duration(seconds: 3),
       ),
     );
 
@@ -462,8 +577,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ...cart.items.map((item) => Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
+                            ItemThumbnail(
+                              imageUrl: item.menuItem.imageUrl,
+                              size: 48,
+                            ),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: Text(
                                 '${item.quantity}x ${item.menuItem.name}',
@@ -550,47 +669,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  
-                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isProcessing ? null : () => _processApplePay(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.black,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          disabledBackgroundColor: Colors.grey,
-                        ),
-                        child: const Text(
-                          'Pay with Apple Pay',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  // Pay with Fawry Button (no loading spinner - Fawry SDK has its own UI)
+                  // Pay with Fawry Button - disabled and shows loading as soon as tapped until redirect
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _isProcessing ? null : () => _processPayment(context),
+                      onPressed: _fawryPayInFlight ? null : () => _processPayment(context),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.burgundy,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        disabledBackgroundColor: Colors.grey,
+                        disabledBackgroundColor: AppColors.burgundy.withOpacity(0.7),
                       ),
-                      child: const Text(
-                        'Pay with Fawry',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: _showPayButtonSpinner
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Text(
+                              'Pay with Fawry',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ),
                 ],

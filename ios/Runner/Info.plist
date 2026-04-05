@@ -7,7 +7,7 @@
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
-		<string>Test App2</string>
+		<string>UniPick: Campus Food</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
 		<key>CFBundleIdentifier</key>
@@ -38,6 +38,16 @@
 				<key>CFBundleURLSchemes</key>
 				<array>
 					<string>com.googleusercontent.apps.479405296471-gd2c78i4i6mlt85ebpm9d2cl1hu2i17t</string>
+				</array>
+			</dict>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLName</key>
+				<string>Fawry 3DS Callback</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>unipick</string>
 				</array>
 			</dict>
 		</array>

@@ -51,6 +51,31 @@ When a user logs in:
    - Manage menu items for that truck
    - Update order statuses
 
+### Pre-Seeded Truck Owner Test Accounts
+
+The following accounts are for **Taco Fiesta (truck2)** and **Pizza Corner (truck3)**. Run the seed script to create them:
+
+| Email | Truck | ownerId | Password |
+|-------|-------|---------|----------|
+| test9@gmail.com | Taco Fiesta | truck2 | UniPick123! |
+| test10@gmail.com | Pizza Corner | truck3 | UniPick123! |
+| test11@gmail.com | Sushi Roll | truck4 | UniPick123! |
+
+**Truck owner accounts do not require email verification** – they bypass the verification screen.
+
+To create these accounts:
+
+```bash
+cd functions
+# Option 1: Use Firebase default credentials (after firebase login)
+npm run seed-truck-owners
+
+# Option 2: Use a service account key
+GOOGLE_APPLICATION_CREDENTIALS=path/to/serviceAccountKey.json npm run seed-truck-owners
+```
+
+Download a service account key from: Firebase Console → Project Settings → Service Accounts → Generate new private key.
+
 ### Important Notes
 
 - The `ownerId` in the user document must **exactly match** one of the truck IDs in `mock_food_trucks.dart`

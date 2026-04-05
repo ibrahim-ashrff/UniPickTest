@@ -51,3 +51,9 @@ app.*.map.json
 
 # Firebase Functions
 functions/node_modules/
+
+# Xcode / iOS local build output (not the Flutter project)
+ios/build/
+
+# Firebase deploy cache
+.firebase/
