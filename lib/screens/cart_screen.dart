@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/cart_provider.dart';
 import '../widgets/cart_item_tile.dart';
+import '../widgets/cart_suggestions_section.dart';
 import '../utils/page_transitions.dart';
 import '../utils/app_colors.dart';
 import 'checkout_screen.dart';
@@ -43,10 +44,27 @@ class CartScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: cart.items.length,
+                    padding: const EdgeInsets.fromLTRB(0, 16, 0, 0),
+                    itemCount: cart.items.length +
+                        (cart.currentTruckId != null ? 1 : 0),
                     itemBuilder: (context, index) {
-                      return CartItemTile(cartItem: cart.items[index]);
+                      if (index < cart.items.length) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: CartItemTile(cartItem: cart.items[index]),
+                        );
+                      }
+                      final truckId = cart.currentTruckId;
+                      if (truckId == null) {
+                        return const SizedBox.shrink();
+                      }
+                      final inCartIds = cart.items
+                          .map((e) => e.menuItem.id)
+                          .toSet();
+                      return CartSuggestionsSection(
+                        truckId: truckId,
+                        cartMenuItemIds: inCartIds,
+                      );
                     },
                   ),
                 ),
@@ -54,8 +72,8 @@ class CartScreen extends StatelessWidget {
                   padding: EdgeInsets.only(
                     left: 16,
                     right: 16,
-                    top: 16,
-                    bottom: 16 + 56 + MediaQuery.of(context).padding.bottom,
+                    top: 12,
+                    bottom: 12 + MediaQuery.of(context).padding.bottom,
                   ),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.surface,
@@ -74,30 +92,13 @@ class CartScreen extends StatelessWidget {
                         children: [
                           const Text(
                             'Subtotal',
-                            style: TextStyle(fontSize: 16),
-                          ),
-                          Text(
-                            'EGP ${cart.subtotal.toStringAsFixed(0)}',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Divider(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Total',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           Text(
-                            'EGP ${cart.total.toStringAsFixed(0)}',
+                            'EGP ${cart.subtotal.toStringAsFixed(0)}',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,

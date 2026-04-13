@@ -1,19 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'orders_screen.dart';
-import 'menu_screen.dart';
 import 'main_navigation.dart';
+import '../widgets/animated_payment_success_header.dart';
+import '../widgets/item_thumbnail.dart';
 import '../state/cart_provider.dart';
 import '../state/orders_provider.dart';
 import '../models/order.dart';
 import '../models/cart_item.dart';
 import '../utils/app_colors.dart';
 import '../utils/order_number_generator.dart';
+import '../utils/order_receipt_pdf.dart';
 import 'package:provider/provider.dart';
 
 /// Screen that displays payment status (Pending / Paid / Failed).
@@ -49,7 +50,10 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
   bool _expiredOrderHandled = false; // Flag to prevent duplicate expired order creation
   Timer? _pollingTimer;
   bool _isPolling = false;
-  
+  /// Set after payment succeeds and the order is built (used for PDF receipt).
+  Order? _savedOrder;
+  bool _receiptExportBusy = false;
+
   // Fawry credentials (same as in checkout)
   static const String _merchantCode = "770000021908";
   static const String _secureHashKey = "b4afb94e0a554815a17ed505de2f9e67";
@@ -259,11 +263,6 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
 
     if (user == null) {
       debugPrint("❌ Cannot complete order - user not logged in");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error: User not logged in')),
-        );
-      }
       return;
     }
     
@@ -287,14 +286,21 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
       items: cartItems,
       total: widget.amount,
       subtotal: cart.subtotal,
-      fawryFees: widget.amount > cart.subtotal ? widget.amount - cart.subtotal : null,
+      unipickFees: CartProvider.unipickFeeAmount,
+      fawryFees: widget.amount > cart.checkoutTotal
+          ? widget.amount - cart.checkoutTotal
+          : null,
       createdAt: now,
       status: 'paid', // Mark as paid since payment was confirmed
       notes: widget.notes,
       truckId: cart.currentTruckId, // Include truck ID from cart
       displayOrderNumber: orderNumber, // Sequential order number per truck
     );
-    
+
+    if (mounted) {
+      setState(() => _savedOrder = order);
+    }
+
     debugPrint("📦 Creating order for user: ${user.email}");
     debugPrint("   - Order ID: ${order.id}");
     debugPrint("   - Items: ${cartItems.length}");
@@ -314,30 +320,13 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
       debugPrint("❌❌❌ ERROR in ordersProvider.addOrder() ❌❌❌");
       debugPrint("   Error: $e");
       debugPrint("   Stack Trace: $stackTrace");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving order: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
     }
     
     // Clear cart
     cart.clear();
 
-    // Wait a moment to show success state
-    await Future.delayed(const Duration(seconds: 2));
-
+    // Stay on this screen; user taps X in the app bar to open the Orders tab.
     if (!mounted) return;
-
-    // Navigate to main navigation with orders tab selected (index 1)
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const MainNavigation(initialIndex: 1)),
-      (route) => false,
-    );
   }
 
   void _handleFailedOrder() async {
@@ -370,16 +359,7 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
         (route) => false,
       );
 
-      // Show failure snackbar
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Payment failed. Please try again.'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+      debugPrint('Payment failed — navigated home; user can retry from cart.');
     } catch (e) {
       debugPrint("⚠️ Error navigating after failed payment: $e");
     }
@@ -415,33 +395,314 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
         (route) => false,
       );
 
-      // Show expired snackbar
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Payment expired. Please try again.'),
-            backgroundColor: AppColors.burgundy,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+      debugPrint('Payment expired — navigated home; user can retry from cart.');
     } catch (e) {
       debugPrint("⚠️ Error navigating after expired payment: $e");
     }
   }
 
-  bool get _showFawryReferenceCard {
-    final r = widget.referenceNumber.trim();
-    if (r.isEmpty) return false;
-    if (r.startsWith('FAILED_')) return false;
-    return true;
+  void _goToOrdersTab() {
+    _pollingTimer?.cancel();
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (context) => const MainNavigation(initialIndex: 1),
+      ),
+      (route) => false,
+    );
   }
 
-  Future<void> _copyReference(String text) async {
-    await Clipboard.setData(ClipboardData(text: text));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Reference number copied')),
+  Future<void> _downloadReceipt() async {
+    final order = _savedOrder;
+    if (order == null) return;
+    if (kIsWeb) {
+      debugPrint('Receipt PDF share is not supported on web.');
+      return;
+    }
+    setState(() => _receiptExportBusy = true);
+    try {
+      await shareOrderReceiptPdf(order);
+    } catch (e, st) {
+      debugPrint('Receipt PDF failed: $e\n$st');
+    } finally {
+      if (mounted) setState(() => _receiptExportBusy = false);
+    }
+  }
+
+  /// Line items + subtotal / UniPick / processing / total — matches receipt when [Order] is saved;
+  /// while payment is pending, uses the live [CartProvider] cart.
+  Widget _buildPaymentSummarySection(BuildContext context) {
+    final saved = _savedOrder;
+    final cart = Provider.of<CartProvider>(context);
+
+    final List<CartItem> lines;
+    final double subtotal;
+    final double? unipickFees;
+    final double? processingFees;
+    final double total;
+
+    if (saved != null) {
+      lines = saved.items;
+      subtotal = saved.subtotal;
+      unipickFees = saved.unipickFees;
+      processingFees = saved.fawryFees;
+      total = saved.total;
+    } else if (cart.items.isNotEmpty) {
+      lines = cart.items;
+      subtotal = cart.subtotal;
+      unipickFees = CartProvider.unipickFeeAmount;
+      processingFees = widget.amount > cart.checkoutTotal + 1e-6
+          ? widget.amount - cart.checkoutTotal
+          : null;
+      total = widget.amount;
+    } else {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Total',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              Text(
+                '${widget.amount.toStringAsFixed(2)} EGP',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Items',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 16),
+                ...lines.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ItemThumbnail(
+                          imageUrl: item.menuItem.imageUrl,
+                          size: 48,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.menuItem.name,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (item.menuItem.description.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  item.menuItem.description,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '${item.quantity} × ${item.menuItem.price.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${item.total.toStringAsFixed(2)} EGP',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                _paymentSummaryMoneyRow(context, 'Subtotal', subtotal),
+                if (unipickFees != null && unipickFees > 0) ...[
+                  const SizedBox(height: 8),
+                  _paymentSummaryMoneyRow(context, 'UniPick fees', unipickFees),
+                ],
+                if (processingFees != null && processingFees > 0) ...[
+                  const SizedBox(height: 8),
+                  _paymentSummaryMoneyRow(
+                    context,
+                    'Processing fees',
+                    processingFees,
+                  ),
+                ],
+                const Divider(height: 24),
+                _paymentSummaryMoneyRow(
+                  context,
+                  'Total',
+                  total,
+                  emphasized: true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _paymentSummaryMoneyRow(
+    BuildContext context,
+    String label,
+    double amount, {
+    bool emphasized = false,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: emphasized ? 20 : 16,
+            fontWeight: emphasized ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        Text(
+          '${amount.toStringAsFixed(2)} EGP',
+          style: TextStyle(
+            fontSize: emphasized ? 20 : 16,
+            fontWeight: FontWeight.bold,
+            color: emphasized ? Colors.red : null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReceiptBottomBar(BuildContext context) {
+    return Material(
+      elevation: 12,
+      shadowColor: Colors.black26,
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: _savedOrder == null
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.burgundy,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Preparing your receipt…',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[700],
+                          ),
+                    ),
+                  ],
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ElevatedButton(
+                      onPressed: _goToOrdersTab,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.burgundy,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Continue to orders',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _receiptExportBusy ? null : _downloadReceipt,
+                      icon: _receiptExportBusy
+                          ? SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.burgundy,
+                              ),
+                            )
+                          : const Icon(Icons.download_rounded, size: 22),
+                      label: Text(
+                        _receiptExportBusy ? 'Creating PDF…' : 'Download receipt',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.burgundy,
+                        side: const BorderSide(color: AppColors.burgundy, width: 1.2),
+                        minimumSize: const Size.fromHeight(50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
     );
   }
 
@@ -450,147 +711,57 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Payment Status'),
-        automaticallyImplyLeading: false, // Prevent back button
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: const Icon(Icons.close, size: 22),
+          tooltip: 'Orders',
+          onPressed: _goToOrdersTab,
+        ),
       ),
+      bottomNavigationBar: _isPaid ? _buildReceiptBottomBar(context) : null,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Status Icon
-              Icon(
-                _isPaid 
-                  ? Icons.check_circle 
-                  : _isFailed 
-                    ? Icons.cancel 
-                    : _isExpired
-                      ? Icons.cancel
-                      : Icons.pending,
-                size: 100,
-                color: _isPaid 
-                  ? Colors.green 
-                  : _isFailed 
-                    ? Colors.red 
-                    : _isExpired
-                      ? AppColors.burgundy
-                      : AppColors.burgundy,
-              ),
-              const SizedBox(height: 32),
-
-              // Status Text
-              Text(
-                _status,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: _isPaid 
-                    ? Colors.green 
-                    : _isFailed 
-                      ? Colors.red 
-                      : _isExpired
-                        ? AppColors.burgundy
-                        : AppColors.burgundy,
+              if (_isPaid) ...[
+                const AnimatedPaymentSuccessHeader(
+                  subtitle: 'Payment confirmed!',
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (_statusMessage != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 28),
+              ] else if (_isFailed || _isExpired) ...[
+                Icon(
+                  Icons.cancel,
+                  size: 100,
+                  color: _isFailed ? Colors.red : AppColors.burgundy,
+                ),
+                const SizedBox(height: 32),
                 Text(
-                  _statusMessage!,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
+                  _status,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: _isFailed ? Colors.red : AppColors.burgundy,
+                      ),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-              ],
-              const SizedBox(height: 48),
-
-              // Amount
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Amount',
-                          style: Theme.of(context).textTheme.titleMedium,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Flexible(
-                        child: Text(
-                          '${widget.amount.toStringAsFixed(2)} EGP',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.end,
-                        ),
-                      ),
-                    ],
+                if (_statusMessage != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _statusMessage!,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                    textAlign: TextAlign.center,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ),
+                ],
+                const SizedBox(height: 48),
+              ] else
+                const SizedBox(height: 8),
+
+              _buildPaymentSummarySection(context),
               const SizedBox(height: 16),
-
-              // Fawry reference number (Pay at Fawry / tracking)
-              if (_showFawryReferenceCard) ...[
-                Card(
-                  elevation: 2,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.numbers, color: AppColors.burgundy),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Fawry reference number',
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: 'Copy',
-                              onPressed: () => _copyReference(widget.referenceNumber),
-                              icon: const Icon(Icons.copy),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        SelectableText(
-                          widget.referenceNumber,
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                              ),
-                        ),
-                        if (widget.merchantRefNum.isNotEmpty &&
-                            widget.merchantRefNum != widget.referenceNumber) ...[
-                          const SizedBox(height: 12),
-                          Text(
-                            'Merchant ref: ${widget.merchantRefNum}',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Colors.grey[600],
-                                ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
 
               // Instructions
               if (!_isPaid)
@@ -615,8 +786,7 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          '• Pay with card: finish in the payment screen; status updates when Fawry confirms.\n'
-                          '• Pay at Fawry: choose Pay at Fawry in Fawry, then pay this amount at any Fawry outlet using the reference number above.\n'
+                          '• Pay with card: finish in the payment screen; status updates when payment is confirmed.\n'
                           '• Status refreshes automatically every few seconds.',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontSize: 13,
@@ -627,33 +797,6 @@ class _PaymentStatusScreenState extends State<PaymentStatusScreen> {
                   ),
                 ),
 
-              if (_isPaid) ...[
-                const SizedBox(height: 24),
-                Card(
-                  color: Colors.green[50],
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      children: [
-                        Icon(Icons.check_circle, color: Colors.green[700]),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Payment confirmed! Redirecting...',
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Colors.green[700],
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-              
               if (_isFailed) ...[
                 const SizedBox(height: 24),
                 Card(

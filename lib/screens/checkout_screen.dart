@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -112,15 +113,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             _showPayButtonSpinner = false;
           });
           _currentMerchantRefNum = null; // Next tap will generate a fresh merchantRefNum
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'This payment was already submitted. Tap "Pay with Fawry" again to start a new payment.',
-              ),
-              duration: Duration(seconds: 5),
-            ),
+          debugPrint(
+            '🔄 Duplicate Fawry request - staying on checkout for retry. '
+            'Tap Pay with Fawry again to start a new payment.',
           );
-          debugPrint("🔄 Duplicate Fawry request - staying on checkout for retry");
           return;
         }
 
@@ -186,7 +182,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
             // Get the amount from cart
             final cart = Provider.of<CartProvider>(context, listen: false);
-            final amount = cart.total;
+            final amount = cart.checkoutTotal;
             
             // Use the stored merchantRefNum from pay() call, or try to extract from response
             String merchantRefNumToUse = _currentMerchantRefNum ?? '';
@@ -259,7 +255,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             });
 
             final cart = Provider.of<CartProvider>(context, listen: false);
-            final amount = cart.total;
+            final amount = cart.checkoutTotal;
 
             // Generate placeholder reference number for failed payment
             final failedRef = 'FAILED_${DateTime.now().millisecondsSinceEpoch}';
@@ -304,12 +300,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           // If paid but no reference number, complete order anyway
           _placeOrder(context, null);
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(msg),
-              duration: const Duration(seconds: 4),
-            ),
-          );
+          debugPrint("Fawry callback (no ref / not paid): $msg");
         }
       },
       onError: (e) {
@@ -320,9 +311,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _fawryPayInFlight = false;
           _showPayButtonSpinner = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Fawry callback error: $e")),
-        );
+        debugPrint("Fawry callback error: $e");
       },
     );
   }
@@ -394,9 +383,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _fawryPayInFlight = false;
         _showPayButtonSpinner = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cart is empty')),
-      );
+      debugPrint('Checkout: cart is empty, cannot start Fawry pay');
       return;
     }
 
@@ -413,7 +400,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final userId = firebaseUser.uid;
       
       // Calculate total amount
-      final totalAmount = cart.total;
+      final totalAmount = cart.checkoutTotal;
 
       // Process payment with Fawry
       // IMPORTANT: Use STAGING credentials (merchantCode + secureHashKey) for testing
@@ -443,20 +430,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         customerName: customerName,
         customerEmail: customerEmail,
         customerMobile: _fawryCustomerMobile(firebaseUser),
-        amountEgp: cart.total.toDouble(),
-        // ALL = card + Pay at Fawry (reference number at outlet) + wallet where enabled
-        paymentMethods: PaymentMethods.ALL,
+        amountEgp: cart.checkoutTotal,
+        // Card-only checkout
+        paymentMethods: PaymentMethods.CREDIT_CARD,
+        // Saved cards / tokenized checkout (same customerProfileId = same wallet on Fawry).
         payWithCardToken: true,
       );
 
-      await payFuture;
-
-      if (!mounted) return;
-
-      // Stop button spinner when Fawry UI has taken over (SDK update handles timing). Pay stays disabled until callback or timeout.
-      setState(() => _showPayButtonSpinner = false);
-
-      // Safety: if no callback arrives within 20s, unlock UI
+      // Safety: if no callback arrives within 20s, unlock UI even if SDK doesn't return.
       Future.delayed(const Duration(seconds: 20), () {
         if (!mounted) return;
         FawryPayment.clearAwaitingReturnFromFawry();
@@ -465,11 +446,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             _fawryPayInFlight = false;
             _showPayButtonSpinner = false;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("No response from Fawry yet. Check logcat.")),
+          debugPrint(
+            'Fawry: no callback within 20s — UI unlocked. Check device logs for SDK/callback.',
           );
         }
       });
+
+      await payFuture.timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => throw TimeoutException('Fawry SDK did not return control'),
+      );
+
+      if (!mounted) return;
+
+      // Stop button spinner when Fawry UI has taken over (SDK update handles timing). Pay stays disabled until callback or timeout.
+      setState(() => _showPayButtonSpinner = false);
 
       // Note: The actual order completion will be handled in the FawryPayment.listen callback
       // when payment is successful. You can call _placeOrder() in the callback.
@@ -481,12 +472,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _showPayButtonSpinner = false;
       });
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Payment failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      debugPrint('Payment failed (Fawry launch/timeout): $e');
     }
   }
 
@@ -514,7 +500,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       //       'quantity': item.quantity,
       //       'price': item.price,
       //     }).toList(),
-      //     'total': cart.total,
+      //     'total': cart.checkoutTotal,
       //     'fawryReferenceNumber': fawryReferenceNumber, // ← Save the reference number
       //     'status': 'paid',
       //     'createdAt': FieldValue.serverTimestamp(),
@@ -617,6 +603,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'UniPick fees',
+                        style: TextStyle(fontSize: 15),
+                      ),
+                      Text(
+                        'EGP ${CartProvider.unipickFeeAmount.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 24),
                   
                   // Notes Section
@@ -658,7 +661,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           ),
                         ),
                         Text(
-                          'EGP ${cart.total.toStringAsFixed(0)}',
+                          'EGP ${cart.checkoutTotal.toStringAsFixed(0)}',
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,

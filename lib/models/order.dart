@@ -8,6 +8,8 @@ class Order {
   final double total;
   final double subtotal;
   final double? fawryFees;
+  /// Platform fee (e.g. 7.5 EGP); null on legacy orders without this field.
+  final double? unipickFees;
   final DateTime createdAt;
   final String status; // 'pending', 'paid', 'preparing', 'ready', 'completed'
   final String? notes;
@@ -24,6 +26,7 @@ class Order {
     required this.total,
     required this.subtotal,
     this.fawryFees,
+    this.unipickFees,
     required this.createdAt,
     required this.status,
     this.notes,
@@ -49,6 +52,7 @@ class Order {
       'total': total,
       'subtotal': subtotal,
       'fawryFees': fawryFees,
+      'unipickFees': unipickFees,
       'createdAt': createdAt.toIso8601String(),
       'status': status,
       'notes': notes,
@@ -74,6 +78,7 @@ class Order {
       'total': total,
       'subtotal': subtotal,
       'fawryFees': fawryFees,
+      'unipickFees': unipickFees,
       'status': status,
       'notes': notes,
       'invoiceNumber': invoiceNumber,
@@ -94,6 +99,7 @@ class Order {
       total: (json['total'] ?? 0).toDouble(),
       subtotal: (json['subtotal'] ?? 0).toDouble(),
       fawryFees: json['fawryFees']?.toDouble(),
+      unipickFees: json['unipickFees']?.toDouble(),
       createdAt: DateTime.parse(json['createdAt'] ?? DateTime.now().toIso8601String()),
       status: json['status'] ?? 'pending',
       notes: json['notes'],

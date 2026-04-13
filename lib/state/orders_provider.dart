@@ -5,6 +5,7 @@ import '../models/order.dart' as app_models;
 import '../models/cart_item.dart';
 import '../models/menu_item.dart';
 import '../services/notification_service.dart';
+import '../services/popular_menu_service.dart';
 
 class OrdersProvider extends ChangeNotifier {
   final List<app_models.Order> _orders = [];
@@ -135,6 +136,14 @@ class OrdersProvider extends ChangeNotifier {
         
         // Clean up duplicates after saving
         await _cleanupDuplicateOrders(order, user.uid);
+
+        if (status == 'paid' && order.truckId != null && order.items.isNotEmpty) {
+          try {
+            await PopularMenuService.incrementFromPaidOrder(order.truckId!, order.items);
+          } catch (popErr) {
+            debugPrint('⚠️ menu_item_popularity increment (non-fatal): $popErr');
+          }
+        }
         
       } catch (e, stackTrace) {
         debugPrint("❌❌❌ ERROR saving order to Firestore ❌❌❌");
@@ -208,6 +217,7 @@ class OrdersProvider extends ChangeNotifier {
             total: (data['total'] ?? 0).toDouble(),
             subtotal: (data['subtotal'] ?? 0).toDouble(),
             fawryFees: data['fawryFees']?.toDouble(),
+            unipickFees: data['unipickFees']?.toDouble(),
             createdAt: createdAt,
             status: orderStatus,
             notes: data['notes'],
@@ -314,6 +324,7 @@ class OrdersProvider extends ChangeNotifier {
             total: (data['total'] ?? 0).toDouble(),
             subtotal: (data['subtotal'] ?? 0).toDouble(),
             fawryFees: data['fawryFees']?.toDouble(),
+            unipickFees: data['unipickFees']?.toDouble(),
             createdAt: createdAt,
             status: orderStatus,
             notes: data['notes'],
@@ -373,6 +384,7 @@ class OrdersProvider extends ChangeNotifier {
         total: oldOrder.total,
         subtotal: oldOrder.subtotal,
         fawryFees: oldOrder.fawryFees,
+        unipickFees: oldOrder.unipickFees,
         createdAt: oldOrder.createdAt,
         status: newStatus,
         notes: oldOrder.notes,

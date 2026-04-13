@@ -66,6 +66,13 @@ service cloud.firestore {
       allow read: if true;
       allow write: if request.auth != null && isTruckOwner() && truckId == getTruckOwnerId();
     }
+
+    // Aggregated order counts per (truckId, menuItemId) for home "trending" — any signed-in user can bump on paid order
+    match /menu_item_popularity/{docId} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+      allow delete: if false;
+    }
   }
 }
 

@@ -115,7 +115,7 @@ class MenuItemDetailScreen extends StatelessWidget {
                           }
                         }
                         if (context.mounted && cart.items.isNotEmpty) {
-                          _showViewCartSheet(context);
+                          _showViewCartSheet(context, item.id);
                         }
                       },
                       icon: const Icon(Icons.add_shopping_cart, size: 22),
@@ -166,18 +166,27 @@ class MenuItemDetailScreen extends StatelessWidget {
     );
   }
 
-  static void _showViewCartSheet(BuildContext context) {
+  static void _showViewCartSheet(BuildContext context, String menuItemId) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Consumer<CartProvider>(
+      builder: (sheetContext) => Consumer<CartProvider>(
         builder: (context, cart, _) {
-          if (cart.items.isEmpty) return const SizedBox.shrink();
+          if (cart.items.isEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (sheetContext.mounted && Navigator.of(sheetContext).canPop()) {
+                Navigator.of(sheetContext).pop();
+              }
+            });
+            return const SizedBox.shrink();
+          }
+          final detailIdx = cart.items.indexWhere((e) => e.menuItem.id == menuItemId);
+          final detailQty = detailIdx >= 0 ? cart.items[detailIdx].quantity : 0;
           return SafeArea(
             top: false,
             child: Container(
               margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
@@ -199,14 +208,14 @@ class MenuItemDetailScreen extends StatelessWidget {
                     ),
                     child: Icon(Icons.shopping_cart, color: AppColors.burgundy, size: 20),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'} • EGP ${cart.total.toStringAsFixed(0)}',
+                          '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'} • EGP ${cart.subtotal.toStringAsFixed(0)}',
                           style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                         ),
                         const SizedBox(height: 2),
@@ -221,16 +230,56 @@ class MenuItemDetailScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  if (detailQty > 0) ...[
+                    const SizedBox(width: 4),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      icon: Icon(Icons.remove_circle_outline, color: AppColors.burgundy, size: 24),
+                      onPressed: () {
+                        final c = context.read<CartProvider>();
+                        final idx = c.items.indexWhere((e) => e.menuItem.id == menuItemId);
+                        if (idx < 0) return;
+                        final q = c.items[idx].quantity;
+                        if (q <= 1) {
+                          c.removeItem(menuItemId);
+                        } else {
+                          c.updateQuantity(menuItemId, q - 1);
+                        }
+                      },
+                    ),
+                    SizedBox(
+                      width: 22,
+                      child: Text(
+                        '$detailQty',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      ),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      icon: Icon(Icons.add_circle_outline, color: AppColors.burgundy, size: 24),
+                      onPressed: () {
+                        final c = context.read<CartProvider>();
+                        final idx = c.items.indexWhere((e) => e.menuItem.id == menuItemId);
+                        if (idx < 0) return;
+                        c.updateQuantity(menuItemId, c.items[idx].quantity + 1);
+                      },
+                    ),
+                  ],
+                  const SizedBox(width: 4),
                   ElevatedButton(
                     onPressed: () {
-                      Navigator.of(ctx).pop();
-                      ctx.slideTo(const CartScreen(), direction: SlideDirection.right);
+                      Navigator.of(sheetContext).pop();
+                      sheetContext.slideTo(const CartScreen(), direction: SlideDirection.right);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.burgundy,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       elevation: 0,
                     ),

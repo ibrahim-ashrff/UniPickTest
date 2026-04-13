@@ -185,7 +185,12 @@ class _TruckOwnerMenuScreenState extends State<TruckOwnerMenuScreen> {
                             name: data['name'] ?? '',
                             description: data['description'] ?? '',
                             price: (data['price'] ?? 0.0).toDouble(),
-                            imageUrl: data['imageUrl'],
+                            imageUrl: ((data['imageUrl'] ?? '').toString().trim().isNotEmpty)
+                                ? data['imageUrl']
+                                : defaultMenuImageFor(
+                                    (data['name'] ?? '').toString(),
+                                    (data['category'] ?? 'Sides').toString(),
+                                  ),
                             category: data['category'] ?? 'Sides',
                           );
 
@@ -524,7 +529,10 @@ class _TruckOwnerMenuScreenState extends State<TruckOwnerMenuScreen> {
                 'price': price,
                 'category': selectedCategory,
                 'imageUrl': imageUrlController.text.trim().isEmpty
-                    ? null
+                    ? defaultMenuImageFor(
+                        nameController.text.trim(),
+                        selectedCategory,
+                      )
                     : imageUrlController.text.trim(),
               };
 

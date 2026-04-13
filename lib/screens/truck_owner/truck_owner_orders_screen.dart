@@ -22,6 +22,109 @@ class _TruckOwnerOrdersScreenState extends State<TruckOwnerOrdersScreen> {
   final Set<String> _knownPaidOrderIds = {};
   bool _initialLoadDone = false;
 
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      _selectedStatus = 'paid';
+    }
+  }
+
+  List<ButtonSegment<String>> _orderStatusSegments({
+    required int paidCount,
+    required int preparingCount,
+    required int readyCount,
+  }) {
+    return [
+      if (!kIsWeb) const ButtonSegment(value: 'all', label: Text('All')),
+      ButtonSegment(
+        value: 'paid',
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Paid'),
+            if (paidCount > 0) ...[
+              const SizedBox(width: 4),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Text(
+                '$paidCount',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      ButtonSegment(
+        value: 'preparing',
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Preparing'),
+            if (preparingCount > 0) ...[
+              const SizedBox(width: 4),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Colors.yellow,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Text(
+                '$preparingCount',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      ButtonSegment(
+        value: 'ready',
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Ready'),
+            if (readyCount > 0) ...[
+              const SizedBox(width: 4),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Text(
+                '$readyCount',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      const ButtonSegment(value: 'completed', label: Text('Completed')),
+    ];
+  }
+
   void _checkAndPlayNewPaidOrderSound(List<QueryDocumentSnapshot> allOrders) {
     final paidOrderIds = <String>{};
     for (final doc in allOrders) {
@@ -100,7 +203,11 @@ class _TruckOwnerOrdersScreenState extends State<TruckOwnerOrdersScreen> {
           final preparingCount = _getOrderCountByStatus(ordersVisibleToOwner, 'preparing');
           final readyCount = _getOrderCountByStatus(ordersVisibleToOwner, 'ready');
 
-          final effectiveFilter = (_selectedStatus == 'pending') ? 'all' : _selectedStatus;
+          var effectiveFilter =
+              (_selectedStatus == 'pending') ? 'all' : _selectedStatus;
+          if (kIsWeb && effectiveFilter == 'all') {
+            effectiveFilter = 'paid';
+          }
           List<QueryDocumentSnapshot> filteredOrders = effectiveFilter == 'all'
               ? ordersVisibleToOwner
               : ordersVisibleToOwner.where((doc) {
@@ -163,94 +270,11 @@ class _TruckOwnerOrdersScreenState extends State<TruckOwnerOrdersScreen> {
                   children: [
                     Expanded(
                       child: SegmentedButton<String>(
-                        segments: [
-                          const ButtonSegment(value: 'all', label: Text('All')),
-                          ButtonSegment(
-                            value: 'paid',
-                            label: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text('Paid'),
-                                if (paidCount > 0) ...[
-                                  const SizedBox(width: 4),
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.red,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Text(
-                                    '$paidCount',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          ButtonSegment(
-                            value: 'preparing',
-                            label: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text('Preparing'),
-                                if (preparingCount > 0) ...[
-                                  const SizedBox(width: 4),
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.yellow,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Text(
-                                    '$preparingCount',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          ButtonSegment(
-                            value: 'ready',
-                            label: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text('Ready'),
-                                if (readyCount > 0) ...[
-                                  const SizedBox(width: 4),
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.green,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Text(
-                                    '$readyCount',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const ButtonSegment(value: 'completed', label: Text('Completed')),
-                        ],
+                        segments: _orderStatusSegments(
+                          paidCount: paidCount,
+                          preparingCount: preparingCount,
+                          readyCount: readyCount,
+                        ),
                         selected: {_selectedStatus},
                         onSelectionChanged: (Set<String> newSelection) {
                           setState(() {

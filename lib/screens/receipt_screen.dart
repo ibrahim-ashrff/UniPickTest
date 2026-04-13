@@ -4,6 +4,8 @@ import '../utils/app_colors.dart';
 import '../data/mock_food_trucks.dart';
 import '../widgets/item_thumbnail.dart';
 import '../widgets/order_estimator.dart';
+import '../widgets/animated_payment_success_header.dart';
+import 'main_navigation.dart';
 
 /// Screen that displays order receipt with all details
 class ReceiptScreen extends StatelessWidget {
@@ -14,14 +16,25 @@ class ReceiptScreen extends StatelessWidget {
     required this.order,
   });
 
+  void _goToOrdersTab(BuildContext context) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (context) => const MainNavigation(initialIndex: 1),
+      ),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Receipt'),
+        automaticallyImplyLeading: false,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new),
-          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.close, size: 22),
+          tooltip: 'Close',
+          onPressed: () => _goToOrdersTab(context),
         ),
         actions: [
           IconButton(
@@ -41,6 +54,11 @@ class ReceiptScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const Center(
+                child: AnimatedPaymentSuccessHeader(),
+              ),
+              const SizedBox(height: 24),
+
               // Header
               Card(
                 color: Colors.white,
@@ -86,11 +104,6 @@ class ReceiptScreen extends StatelessWidget {
                       if (order.invoiceNumber != null) ...[
                         const Divider(),
                         _buildReceiptRow('Invoice #', order.invoiceNumber!),
-                      ],
-                      if (order.fawryReferenceNumber.isNotEmpty &&
-                          !order.fawryReferenceNumber.startsWith('FAILED_')) ...[
-                        const Divider(),
-                        _buildReceiptRow('Fawry reference', order.fawryReferenceNumber),
                       ],
                     ],
                   ),
@@ -187,9 +200,13 @@ class ReceiptScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       _buildTotalRow('Subtotal', order.subtotal),
+                      if (order.unipickFees != null && order.unipickFees! > 0) ...[
+                        const SizedBox(height: 8),
+                        _buildTotalRow('UniPick fees', order.unipickFees!),
+                      ],
                       if (order.fawryFees != null && order.fawryFees! > 0) ...[
                         const SizedBox(height: 8),
-                        _buildTotalRow('Fawry Fees', order.fawryFees!),
+                        _buildTotalRow('Processing fees', order.fawryFees!),
                       ],
                       const Divider(height: 24),
                       _buildTotalRow(
@@ -233,29 +250,7 @@ class ReceiptScreen extends StatelessWidget {
                 ),
               ],
 
-              const SizedBox(height: 32),
-
-              // Thank you message
-              Center(
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.check_circle,
-                      size: 60,
-                      color: Colors.green,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Thank you for your order!',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
             ],
           ),
         ),

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -25,7 +26,20 @@ class _TruckOwnerDashboardScreenState extends State<TruckOwnerDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      _selectedStatus = 'paid';
+    }
     _loadOrders();
+  }
+
+  List<ButtonSegment<String>> _statusFilterSegments() {
+    return [
+      if (!kIsWeb) const ButtonSegment(value: 'all', label: Text('All')),
+      const ButtonSegment(value: 'paid', label: Text('Paid')),
+      const ButtonSegment(value: 'preparing', label: Text('Preparing')),
+      const ButtonSegment(value: 'ready', label: Text('Ready')),
+      const ButtonSegment(value: 'completed', label: Text('Completed')),
+    ];
   }
 
   Future<void> _loadOrders() async {
@@ -205,13 +219,7 @@ class _TruckOwnerDashboardScreenState extends State<TruckOwnerDashboardScreen> {
                   children: [
                     Expanded(
                       child: SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(value: 'all', label: Text('All')),
-                          ButtonSegment(value: 'paid', label: Text('Paid')),
-                          ButtonSegment(value: 'preparing', label: Text('Preparing')),
-                          ButtonSegment(value: 'ready', label: Text('Ready')),
-                          ButtonSegment(value: 'completed', label: Text('Completed')),
-                        ],
+                        segments: _statusFilterSegments(),
                         selected: {_selectedStatus},
                         onSelectionChanged: (Set<String> newSelection) {
                           setState(() {

@@ -10,6 +10,28 @@ const _salad = 'https://images.unsplash.com/photo-1546793665-c74683f339c1?w=400'
 const _coffee = 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=400';
 const _cake = 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400';
 
+String defaultMenuImageFor(String name, String category) {
+  final n = name.toLowerCase();
+  final c = category.toLowerCase();
+
+  if (n.contains('burger')) return _burger;
+  if (n.contains('chicken')) return _chicken;
+  if (n.contains('fries') || n.contains('potato')) return _fries;
+  if (n.contains('pizza')) return _pizza;
+  if (n.contains('salad')) return _salad;
+  if (n.contains('coffee') || n.contains('latte') || n.contains('cappuccino')) {
+    return _coffee;
+  }
+  if (n.contains('cake') || n.contains('dessert') || n.contains('chocolate')) {
+    return _cake;
+  }
+  if (c.contains('beverage') || c.contains('drink')) return _drink;
+  if (c.contains('sandwich')) return _burger;
+  if (c.contains('side')) return _fries;
+
+  return _burger;
+}
+
 final List<MenuItem> mockMenuItems = [
   MenuItem(id: '1', name: 'Classic Burger', description: 'Beef patty with lettuce, tomato, and special sauce', price: 45.0, category: 'Sandwiches', imageUrl: _burger),
   MenuItem(id: '2', name: 'Chicken Burger', description: 'Grilled chicken with mayo and pickles', price: 40.0, category: 'Sandwiches', imageUrl: _chicken),

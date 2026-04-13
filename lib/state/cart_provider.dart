@@ -3,6 +3,9 @@ import '../models/cart_item.dart';
 import '../models/menu_item.dart';
 
 class CartProvider extends ChangeNotifier {
+  /// Flat fee added at checkout (Fawry charge, receipts). Not included in [subtotal].
+  static const double unipickFeeAmount = 8.0;
+
   final List<CartItem> _items = [];
   String? _currentTruckId; // Track which food truck the cart is for
 
@@ -13,7 +16,10 @@ class CartProvider extends ChangeNotifier {
 
   double get subtotal => _items.fold(0.0, (sum, item) => sum + item.total);
 
-  double get total => subtotal; // Can add tax/service fee here later
+  double get unipickFees => unipickFeeAmount;
+
+  /// Items subtotal + UniPick fee — use on checkout and payment only.
+  double get checkoutTotal => subtotal + unipickFeeAmount;
 
   /// Returns true if item was added successfully, false if different truck detected
   bool addItem(MenuItem menuItem, {String? truckId}) {

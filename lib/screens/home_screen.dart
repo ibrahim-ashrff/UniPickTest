@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/food_truck.dart';
 import '../models/menu_item.dart' as app_models;
+import '../models/popular_menu_slide.dart';
+import '../services/popular_menu_service.dart';
 import '../data/mock_food_trucks.dart';
 import '../data/mock_menu.dart';
 import '../state/favorites_provider.dart';
@@ -40,9 +42,11 @@ class _HomeScreenState extends State<HomeScreen>
   final PageController _heroPageController = PageController();
   int _heroPage = 0;
   Timer? _heroAutoScrollTimer;
+  StreamSubscription<List<PopularMenuSlide>>? _popularSlidesSub;
+  List<PopularMenuSlide> _popularSlides = [];
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  List<({app_models.MenuItem item, String truckId})> _searchResults = [];
+  List<({app_models.MenuItem item, String truckId, String truckLabel})> _searchResults = [];
   Timer? _searchDebounce;
 
   @override
@@ -63,9 +67,52 @@ class _HomeScreenState extends State<HomeScreen>
     );
     _animController.forward();
 
+    _popularSlides = PopularMenuService.syntheticSingleTruckFallback(4);
+    PopularMenuService.loadSlidesFromActualMenus(limit: 4).then((menus) {
+      if (!mounted || menus.isEmpty) return;
+      setState(() => _popularSlides = menus);
+    });
+    _popularSlidesSub = PopularMenuService.watchTop(limit: 4).listen(
+      (list) {
+        if (!mounted) return;
+        if (list.isEmpty) {
+          PopularMenuService.loadSlidesFromActualMenus(limit: 4).then((menus) {
+            if (!mounted) return;
+            setState(() => _popularSlides = menus);
+          });
+          return;
+        }
+        setState(() {
+          _popularSlides = list;
+          if (_heroPage >= _popularSlides.length) {
+            _heroPage = 0;
+          }
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_heroPageController.hasClients) return;
+          final n = _popularSlides.length;
+          if (n == 0) return;
+          if (_heroPageController.page != null &&
+              _heroPageController.page!.round() >= n) {
+            _heroPageController.jumpToPage(0);
+          }
+        });
+      },
+      onError: (Object e, StackTrace st) {
+        debugPrint('Popular menu stream error: $e');
+        if (mounted) {
+          setState(() {
+            _popularSlides = PopularMenuService.syntheticSingleTruckFallback(4);
+          });
+        }
+      },
+    );
+
     _heroAutoScrollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (!_heroPageController.hasClients) return;
-      final next = (_heroPage + 1) % 4;
+      final n = _popularSlides.length;
+      if (n <= 1) return;
+      final next = (_heroPage + 1) % n;
       _heroPageController.animateToPage(
         next,
         duration: const Duration(milliseconds: 400),
@@ -79,9 +126,20 @@ class _HomeScreenState extends State<HomeScreen>
     _searchDebounce?.cancel();
     _searchController.dispose();
     _heroAutoScrollTimer?.cancel();
+    _popularSlidesSub?.cancel();
     _animController.dispose();
     _heroPageController.dispose();
     super.dispose();
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {
+      _searchQuery = '';
+      _searchResults = [];
+    });
+    FocusScope.of(context).unfocus();
   }
 
   void _onSearchChanged(String query) {
@@ -121,16 +179,20 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       final q = query.trim().toLowerCase();
       final queryWords = q.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
-      final results = <({app_models.MenuItem item, String truckId})>[];
+      final results = <({app_models.MenuItem item, String truckId, String truckLabel})>[];
 
       // Search Firestore: menu_items in ALL trucks by querying each truck's
       // subcollection (no collectionGroup index needed). Same item can exist in multiple trucks.
       try {
         final firestore = FirebaseFirestore.instance;
         List<String> truckIds = [];
+        final truckDocs = <String, Map<String, dynamic>>{};
         try {
           final trucksSnapshot = await firestore.collection('food_trucks').get();
           truckIds = trucksSnapshot.docs.map((d) => d.id).toList();
+          for (final d in trucksSnapshot.docs) {
+            truckDocs[d.id] = d.data();
+          }
         } catch (_) {
           truckIds = mockFoodTrucks.map((t) => t.id).toList();
         }
@@ -155,10 +217,13 @@ class _HomeScreenState extends State<HomeScreen>
                   name: name,
                   description: description,
                   price: (data['price'] ?? 0.0).toDouble(),
-                  imageUrl: data['imageUrl'],
+                  imageUrl: ((data['imageUrl'] ?? '').toString().trim().isNotEmpty)
+                      ? data['imageUrl']
+                      : defaultMenuImageFor(name, category),
                   category: category,
                 ),
                 truckId: truckId,
+                truckLabel: PopularMenuService.resolvedDisplayName(truckId, truckDocs[truckId]),
               ));
             }
           }
@@ -185,6 +250,7 @@ class _HomeScreenState extends State<HomeScreen>
                 category: item.category,
               ),
               truckId: truck.id,
+              truckLabel: truck.name,
             ));
           }
         }
@@ -230,6 +296,22 @@ class _HomeScreenState extends State<HomeScreen>
                       color: Colors.grey[700],
                       size: 22,
                     ),
+                    suffixIcon: _searchQuery.trim().isNotEmpty
+                        ? IconButton(
+                            icon: Icon(
+                              Icons.close,
+                              size: 20,
+                              color: Colors.grey[700],
+                            ),
+                            tooltip: 'Clear search',
+                            onPressed: _clearSearch,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 40,
+                              minHeight: 40,
+                            ),
+                          )
+                        : null,
                     filled: true,
                     fillColor: Colors.grey[200],
                     border: OutlineInputBorder(
@@ -283,7 +365,7 @@ class _HomeScreenState extends State<HomeScreen>
                         } catch (_) {
                           foodTruck = FoodTruck(
                             id: r.truckId,
-                            name: 'Food Truck',
+                            name: r.truckLabel,
                             cuisine: '',
                             rating: 0,
                             imageUrl: '',
@@ -319,7 +401,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 children: [
                                   Flexible(
                                     child: Text(
-                                      foodTruck.name,
+                                      r.truckLabel,
                                       style: GoogleFonts.poppins(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w500,
@@ -386,9 +468,16 @@ class _HomeScreenState extends State<HomeScreen>
                           onPageChanged: (index) {
                             setState(() => _heroPage = index);
                           },
-                          itemCount: featuredTrucks.length,
+                          itemCount: _popularSlides.isEmpty
+                              ? 1
+                              : _popularSlides.length,
                           itemBuilder: (context, index) {
-                            return _HeroTruckCard(truck: featuredTrucks[index]);
+                            final slides = _popularSlides.isNotEmpty
+                                ? _popularSlides
+                                : PopularMenuService.syntheticSingleTruckFallback(4);
+                            return _PopularMenuHeroCard(
+                              slide: slides[index.clamp(0, slides.length - 1)],
+                            );
                           },
                         ),
                       ),
@@ -397,7 +486,10 @@ class _HomeScreenState extends State<HomeScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: List.generate(
-                        4,
+                        (_popularSlides.isEmpty
+                                ? 1
+                                : _popularSlides.length)
+                            .clamp(1, 8),
                         (index) => AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -598,130 +690,173 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-/// Hero-style card for horizontal carousel
-class _HeroTruckCard extends StatelessWidget {
-  final FoodTruck truck;
+/// Hero carousel card: menu item image, dish + truck names, opens item detail.
+class _PopularMenuHeroCard extends StatelessWidget {
+  final PopularMenuSlide slide;
 
-  const _HeroTruckCard({required this.truck});
+  const _PopularMenuHeroCard({required this.slide});
 
   @override
   Widget build(BuildContext context) {
+    final truck = slide.truck;
+    final item = slide.item;
+    final imageUrl = (item.imageUrl ?? '').trim();
+
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('food_trucks')
           .doc(truck.id)
           .snapshots(),
       builder: (context, snapshot) {
-        final isOpen = (snapshot.data?.data() as Map<String, dynamic>?)?['isOpen'] ?? truck.isOpen;
+        final liveDoc = snapshot.data?.data() as Map<String, dynamic>?;
+        final openRaw = liveDoc?['isOpen'];
+        final isOpen = openRaw is bool ? openRaw : truck.isOpen;
+        final truckLabel =
+            PopularMenuService.displayTruckNameForHero(truck.id, liveDoc, truck.name);
         return GestureDetector(
           onTap: isOpen
               ? () {
                   context.slideTo(
-                    FoodTruckMenuScreen(truck: truck),
+                    MenuItemDetailScreen(item: item, truck: truck),
                     direction: SlideDirection.right,
                   );
                 }
               : null,
           child: AnimatedOpacity(
-            opacity: isOpen ? 1 : 0.7,
+            opacity: isOpen ? 1 : 0.72,
             duration: const Duration(milliseconds: 200),
             child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(
+              fit: StackFit.expand,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: imageUrl.isNotEmpty
+                      ? Image.network(
+                          imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _heroItemPlaceholder(context),
+                        )
+                      : _heroItemPlaceholder(context),
+                ),
+                Container(
+                  decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
-                    child: truck.imageUrl.isNotEmpty
-                        ? Image.network(
-                            truck.imageUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _placeholder(context),
-                          )
-                        : _placeholder(context),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.78),
+                      ],
+                      stops: const [0.35, 1.0],
+                    ),
                   ),
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.75),
-                        ],
-                        stops: const [0.4, 1.0],
+                ),
+                if (slide.orderCount > 0)
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.45),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${slide.orderCount} orders',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
-                  Positioned(
-                    bottom: 16,
-                    left: 16,
-                    right: 16,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (isOpen)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade600,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'Open',
-                              style: GoogleFonts.poppins(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          )
-                        else
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'Closed',
-                              style: GoogleFonts.poppins(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
+                Positioned(
+                  bottom: 16,
+                  left: 16,
+                  right: 16,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (isOpen)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade600,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Open',
+                            style: GoogleFonts.poppins(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
                             ),
                           ),
-                        const SizedBox(height: 8),
-                        Text(
-                          truck.name,
-                          style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                        )
+                      else
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Closed',
+                            style: GoogleFonts.poppins(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
-                        Text(
-                          truck.cuisine,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: Colors.white70,
-                          ),
+                      const SizedBox(height: 8),
+                      Text(
+                        item.name,
+                        style: GoogleFonts.poppins(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          height: 1.2,
                         ),
-                      ],
-                    ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        truckLabel,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white.withOpacity(0.92),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'EGP ${item.price.toStringAsFixed(0)}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
         );
       },
     );
   }
 
-  Widget _placeholder(BuildContext context) {
+  Widget _heroItemPlaceholder(BuildContext context) {
     return Container(
       color: Colors.grey.shade300,
-      child: Icon(Icons.restaurant, size: 48, color: Colors.grey.shade500),
+      child: Icon(Icons.fastfood, size: 56, color: Colors.grey.shade500),
     );
   }
 }

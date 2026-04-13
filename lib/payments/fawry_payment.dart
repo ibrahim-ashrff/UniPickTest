@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
-import 'package:crypto/crypto.dart';
 import 'package:fawry_sdk/fawry_sdk.dart';
 import 'package:fawry_sdk/fawry_utils.dart';
 import 'package:fawry_sdk/model/bill_item.dart';
@@ -51,11 +50,7 @@ class FawryPayment {
         onPaymentComplete(response);
       } catch (e) {
         onError?.call(e);
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Fawry callback parse error: $e")),
-          );
-        }
+        debugPrint("Fawry callback parse error: $e");
       }
     });
     
@@ -69,9 +64,8 @@ class FawryPayment {
 
   /// Fawry expects merchant ref as alphanumeric (guide). Underscores/long UID-based refs can fail card auth while Pay-at-Fawry still works.
   static String generateMerchantRefNum() {
-    final ts = DateTime.now().millisecondsSinceEpoch.toString();
-    final tail = ts.length > 10 ? ts.substring(ts.length - 10) : ts;
-    return '${FawryUtils.randomAlphaNumeric(8)}$tail';
+    // Per Fawry guide: random 10 alphanumeric digits.
+    return FawryUtils.randomAlphaNumeric(10);
   }
 
   static Future<String> pay({
@@ -102,6 +96,8 @@ class FawryPayment {
     debugPrint("FAWRY secureHashKey=$secureHashKey");
     debugPrint("FAWRY payWithCardToken=$payWithCardToken");
 
+    // One aggregate line. A "rich" cart would pass multiple [BillItem]s (each menu line:
+    // id, name, qty, unit price) so Fawry's receipt/checkout shows itemized rows.
     final chargeItems = <BillItem>[
       BillItem(
         itemId: "Item1",
@@ -133,19 +129,30 @@ class FawryPayment {
       applePayModel = LaunchApplePayModel(merchantID: applePayMerchantId);
     }
 
-    // LaunchCheckoutModel(scheme) enables redirect back to app; Info.plist must have CFBundleURLSchemes = unipick.
+    // Deep link scheme must match iOS Info.plist + Android intent-filter (`unipick`).
+    // Needed for FAWRY_PAY / ALL redirects; for iOS card + saved cards (token) the SDK
+    // may need the same return URL after 3DS / wallet handoff.
     final isIOS = Platform.isIOS;
     LaunchCheckoutModel? checkoutModel;
-    if (isIOS) {
+    final needsCheckoutScheme = paymentMethods == PaymentMethods.ALL ||
+        paymentMethods == PaymentMethods.FAWRY_PAY ||
+        (isIOS &&
+            paymentMethods == PaymentMethods.CREDIT_CARD &&
+            payWithCardToken);
+    if (isIOS && needsCheckoutScheme) {
       checkoutModel = LaunchCheckoutModel(scheme: 'unipick');
     }
+
+    // skipReceipt: hide Fawry's post-payment receipt screen.
+    // skipLogin: false on iOS + card-only (SDK may need that step); true on Android / other.
+    final isIOSCardOnly = isIOS && paymentMethods == PaymentMethods.CREDIT_CARD;
 
     final model = FawryLaunchModel(
       allow3DPayment: allow3D,
       chargeItems: chargeItems,
       launchCustomerModel: customerModel,
       launchMerchantModel: merchantModel,
-      skipLogin: true,
+      skipLogin: isIOSCardOnly ? false : true,
       skipReceipt: true,
       payWithCardToken: payWithCardToken,
       paymentMethods: paymentMethods,
